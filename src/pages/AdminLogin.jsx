@@ -26,7 +26,7 @@ function AdminLogin() {
 
       alert("Admin Login Successful");
 
-      navigate("/");
+      navigate("/admin-dashboard");
 
     } catch (error) {
       alert(error.message);

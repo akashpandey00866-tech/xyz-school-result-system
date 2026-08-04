@@ -1,4 +1,6 @@
+import ViewStudents from "../pages/ViewStudents";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+
 
 import Home from "../pages/Home";
 import StudentLogin from "../pages/StudentLogin";
@@ -11,6 +13,11 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route
+        path="/view-students"
+  element={<ViewStudents />}
+/>
+
 
         <Route path="/" element={<Home />} />
 
