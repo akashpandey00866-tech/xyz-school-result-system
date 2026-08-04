@@ -9,13 +9,14 @@ const firebaseConfig = {
   projectId: "xyz-school-result-system",
   storageBucket: "xyz-school-result-system.firebasestorage.app",
   messagingSenderId: "672166616676",
-  appId: "1:672166616676:web:e1fefe92845511adb74971"
+  appId: "1:672166616676:web:e1fefe92845511adb74971",
 };
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
+export { auth, db, storage };
 export default app;
