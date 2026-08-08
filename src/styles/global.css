@@ -1,1 +1,35 @@
 @import "tailwindcss";
+@media print {
+
+  @page{
+    size:A4 portrait;
+    margin:10mm;
+  }
+
+  body *{
+    visibility:hidden;
+  }
+
+  #receipt,
+  #receipt *{
+    visibility:visible;
+  }
+
+  #receipt{
+    position:absolute;
+    left:0;
+    top:0;
+    width:190mm;
+    min-height:277mm;
+    margin:0;
+    padding:10mm;
+    box-shadow:none !important;
+    border:none !important;
+    overflow:hidden;
+  }
+
+  button{
+    display:none !important;
+  }
+
+}

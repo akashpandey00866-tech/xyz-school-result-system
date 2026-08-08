@@ -1,13 +1,30 @@
-import { useEffect, useState } from "react";
-import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  getDocs,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+
 import { db } from "../config/firebase";
+import StudentCard from "../components/StudentCard";
 
 function ViewStudents() {
+
   const [students, setStudents] = useState([]);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    loadStudents();
+  }, []);
 
   const loadStudents = async () => {
+
     try {
-      const snapshot = await getDocs(collection(db, "students"));
+
+      const snapshot = await getDocs(
+        collection(db, "students")
+      );
 
       const data = snapshot.docs.map((item) => ({
         id: item.id,
@@ -15,125 +32,186 @@ function ViewStudents() {
       }));
 
       setStudents(data);
+
     } catch (error) {
+
       console.log(error);
+      alert(error.message);
+
     }
+
   };
 
-  useEffect(() => {
-    loadStudents();
-  }, []);
+  const handleDelete = async (id) => {
 
-  const deleteStudent = async (id) => {
-    const ok = window.confirm("Delete this student?");
+    const ok = window.confirm(
+      "Delete this student?"
+    );
 
     if (!ok) return;
 
     try {
-      await deleteDoc(doc(db, "students", id));
+
+      await deleteDoc(
+        doc(db, "students", id)
+      );
 
       alert("Student Deleted Successfully");
 
       loadStudents();
+
     } catch (error) {
+
       alert(error.message);
+
     }
+
   };
 
-  return (
+  const filteredStudents = useMemo(() => {
+
+    return students.filter((item) => {
+
+      const text = (
+        (item.name || "") +
+        (item.enrollmentNo || "") +
+        (item.className || "") +
+        (item.section || "") +
+        (item.mobile || "") +
+        (item.email || "") +
+        (item.fatherName || "")
+      ).toLowerCase();
+
+      return text.includes(
+        search.toLowerCase()
+      );
+
+    });
+
+  }, [students, search]);
+
+  const groupedStudents = useMemo(() => {
+
+    const groups = {};
+
+    for (let i = 1; i <= 12; i++) {
+      groups[i] = {};
+    }
+
+    filteredStudents.forEach((student) => {
+
+      const cls = student.className || "Unknown";
+      const sec = student.section || "A";
+
+      if (!groups[cls]) {
+        groups[cls] = {};
+      }
+
+      if (!groups[cls][sec]) {
+        groups[cls][sec] = [];
+      }
+
+      groups[cls][sec].push(student);
+
+    });
+
+    return groups;
+
+  }, [filteredStudents]);
+    return (
     <div className="min-h-screen bg-gray-100 p-8">
 
-      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-lg p-6">
+      <div className="max-w-7xl mx-auto">
 
-        <h1 className="text-3xl font-bold text-green-700 mb-6">
-          View Students
-        </h1>
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
 
-        <div className="overflow-x-auto">
+          <h1 className="text-3xl font-bold text-green-700">
+            Student Records
+          </h1>
 
-          <table className="w-full border-collapse border border-gray-300">
-
-            <thead>
-
-              <tr className="bg-green-700 text-white">
-
-                <th className="border p-3">Student Name</th>
-
-                <th className="border p-3">Enrollment No</th>
-
-                <th className="border p-3">Class</th>
-
-                <th className="border p-3">Section</th>
-
-                <th className="border p-3">Email</th>
-
-                <th className="border p-3">Mobile</th>
-
-                <th className="border p-3">Action</th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>              {students.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan="7"
-                    className="border p-6 text-center text-gray-500"
-                  >
-                    No Students Found
-                  </td>
-                </tr>
-              ) : (
-                students.map((student) => (
-                  <tr
-                    key={student.id}
-                    className="hover:bg-gray-100 transition"
-                  >
-                    <td className="border p-3 text-center">
-                      {student.name || "-"}
-                    </td>
-
-                    <td className="border p-3 text-center">
-                      {student.enrollmentNo || "-"}
-                    </td>
-
-                    <td className="border p-3 text-center">
-                      {student.className || "-"}
-                    </td>
-
-                    <td className="border p-3 text-center">
-                      {student.section || "-"}
-                    </td>
-
-                    <td className="border p-3 text-center">
-                      {student.email || "-"}
-                    </td>
-
-                    <td className="border p-3 text-center">
-                      {student.mobile || "-"}
-                    </td>
-
-                    <td className="border p-3 text-center">
-
-                      <button
-                        onClick={() => deleteStudent(student.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg"
-                      >
-                        Delete
-                      </button>
-
-                    </td>
-
-                  </tr>
-                ))
-              )}
-
-            </tbody>
-
-          </table>
+          <input
+            type="text"
+            placeholder="🔍 Search Name / Enrollment / Mobile..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="border rounded-lg px-4 py-3 w-full md:w-96 focus:ring-2 focus:ring-green-600 outline-none"
+          />
 
         </div>
+
+        {/* Class List */}
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((cls) => (
+
+          <details
+            key={cls}
+            className="bg-white rounded-xl shadow-lg mb-6 overflow-hidden"
+          >
+
+            <summary className="cursor-pointer px-6 py-4 bg-green-700 text-white text-xl font-bold">
+
+              📚 Class {cls}
+              {" "}
+              (
+              {Object.values(groupedStudents[cls] || {}).flat().length}
+              )
+
+            </summary>
+
+            <div className="p-6">
+
+              {Object.keys(groupedStudents[cls] || {}).length === 0 ? (
+
+                <div className="text-center text-gray-500 py-8">
+                  No Students Found
+                </div>
+
+              ) : (
+
+                Object.keys(groupedStudents[cls])
+                  .sort()
+                  .map((section) => (
+
+                    <div
+                      key={section}
+                      className="mb-8"
+                    >
+
+                      <h2 className="text-xl font-bold text-blue-700 mb-4">
+
+                        📁 Section {section}
+                        {" "}
+                        (
+                        {groupedStudents[cls][section].length}
+                        )
+
+                      </h2>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+
+                        {groupedStudents[cls][section].map((student) => (
+
+                          <StudentCard
+                            key={student.id}
+                            student={student}
+                            onDelete={handleDelete}
+                          />
+
+                        ))}
+
+                      </div>
+
+                    </div>
+
+                  ))
+
+              )}
+
+            </div>
+
+          </details>
+
+        ))}
 
       </div>
 
