@@ -1,47 +1,138 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+} from "react-router-dom";
+
+/* =========================================================
+   PUBLIC
+========================================================= */
 
 import Home from "../pages/Home";
 import StudentLogin from "../pages/StudentLogin";
 import StudentDashboard from "../pages/StudentDashboard";
-
 import AdminLogin from "../pages/AdminLogin";
+import NotFound from "../pages/NotFound";
+
+/* =========================================================
+   ADMIN
+========================================================= */
+
 import AdminDashboard from "../pages/AdminDashboard";
+
+/* =========================================================
+   STUDENTS
+========================================================= */
 
 import AddStudent from "../pages/AddStudent";
 import ViewStudents from "../pages/ViewStudents";
 import EditStudent from "../pages/EditStudent";
+import StudentAccounts from "../pages/admin/StudentAccounts";
+
+/* =========================================================
+   ACADEMIC
+========================================================= */
+
+import AcademicConfiguration from "../pages/AcademicConfiguration";
+import SubjectManagement from "../pages/SubjectManagement";
+
+/* =========================================================
+   RESULTS
+========================================================= */
 
 import AddResult from "../pages/AddResult";
 import ViewResults from "../pages/ViewResults";
 import EditResult from "../pages/EditResult";
 import ResultDetails from "../pages/ResultDetails";
 import PublishResults from "../pages/PublishResults";
-import SubjectManagement from "../pages/SubjectManagement";
+
+/* =========================================================
+   EXCEL
+========================================================= */
+
+import ExcelExport from "../pages/ExcelExport";
+import ExcelImport from "../pages/ExcelImport";
+
+/* =========================================================
+   FEES
+========================================================= */
 
 import FeeManagement from "../pages/FeeManagement";
 import CollectFee from "../pages/CollectFee";
 import PaymentHistory from "../pages/PaymentHistory";
 import FeeSettings from "../pages/FeeSettings";
 
+/* =========================================================
+   OTHER
+========================================================= */
+
 import Archive from "../pages/Archive";
 import Settings from "../pages/Settings";
-import NotFound from "../pages/NotFound";
 
 import ProtectedAdminRoute from "./ProtectedAdminRoute";
+
+
 function AppRoutes() {
+
   return (
+
     <BrowserRouter>
 
       <Routes>
 
-        {/* Public */}
+        {/* =================================================
+            PUBLIC
+        ================================================= */}
 
-        <Route path="/" element={<Home />} />
-        <Route path="/student-login" element={<StudentLogin />} />
-        <Route path="/student-dashboard" element={<StudentDashboard />} />
-        <Route path="/admin-login" element={<AdminLogin />} />
+        <Route
+          path="/"
+          element={<Home />}
+        />
 
-        {/* Dashboard */}
+        <Route
+          path="/student-login"
+          element={<StudentLogin />}
+        />
+
+        <Route
+          path="/student/login"
+          element={<StudentLogin />}
+        />
+
+        <Route
+          path="/student-dashboard"
+          element={<StudentDashboard />}
+        />
+
+        <Route
+          path="/student/dashboard"
+          element={<StudentDashboard />}
+        />
+
+        <Route
+          path="/student/result"
+          element={<StudentDashboard />}
+        />
+
+        <Route
+          path="/student/fees"
+          element={<StudentDashboard />}
+        />
+
+        <Route
+          path="/admin-login"
+          element={<AdminLogin />}
+        />
+
+        <Route
+          path="/admin/login"
+          element={<AdminLogin />}
+        />
+
+
+        {/* =================================================
+            ADMIN DASHBOARD
+        ================================================= */}
 
         <Route
           path="/admin-dashboard"
@@ -52,13 +143,48 @@ function AppRoutes() {
           }
         />
 
-        {/* Student */}
-
         <Route
-          path="/add-student"
+          path="/admin/dashboard"
           element={
             <ProtectedAdminRoute>
-              <AddStudent />
+              <AdminDashboard />
+            </ProtectedAdminRoute>
+          }
+        />
+
+
+        {/* =================================================
+            ACADEMIC
+        ================================================= */}
+
+        <Route
+          path="/academic-configuration"
+          element={
+            <ProtectedAdminRoute>
+              <AcademicConfiguration />
+            </ProtectedAdminRoute>
+          }
+        />
+
+        <Route
+          path="/subject-management"
+          element={
+            <ProtectedAdminRoute>
+              <SubjectManagement />
+            </ProtectedAdminRoute>
+          }
+        />
+
+
+        {/* =================================================
+            STUDENTS
+        ================================================= */}
+
+        <Route
+          path="/students"
+          element={
+            <ProtectedAdminRoute>
+              <ViewStudents />
             </ProtectedAdminRoute>
           }
         />
@@ -73,6 +199,24 @@ function AppRoutes() {
         />
 
         <Route
+          path="/students/add"
+          element={
+            <ProtectedAdminRoute>
+              <AddStudent />
+            </ProtectedAdminRoute>
+          }
+        />
+
+        <Route
+          path="/add-student"
+          element={
+            <ProtectedAdminRoute>
+              <AddStudent />
+            </ProtectedAdminRoute>
+          }
+        />
+
+        <Route
           path="/edit-student/:id"
           element={
             <ProtectedAdminRoute>
@@ -81,7 +225,19 @@ function AppRoutes() {
           }
         />
 
-        {/* Result */}
+        <Route
+          path="/student-accounts"
+          element={
+            <ProtectedAdminRoute>
+              <StudentAccounts />
+            </ProtectedAdminRoute>
+          }
+        />
+
+
+        {/* =================================================
+            RESULTS
+        ================================================= */}
 
         <Route
           path="/add-result"
@@ -128,16 +284,42 @@ function AppRoutes() {
           }
         />
 
+
+        {/* =================================================
+            EXCEL
+        ================================================= */}
+
         <Route
-          path="/subject-management"
+          path="/excel-export"
           element={
             <ProtectedAdminRoute>
-              <SubjectManagement />
+              <ExcelExport />
             </ProtectedAdminRoute>
           }
         />
 
-        {/* Fee */}
+        <Route
+          path="/excel-import"
+          element={
+            <ProtectedAdminRoute>
+              <ExcelImport />
+            </ProtectedAdminRoute>
+          }
+        />
+
+
+        {/* =================================================
+            FEES
+        ================================================= */}
+
+        <Route
+          path="/fees"
+          element={
+            <ProtectedAdminRoute>
+              <FeeManagement />
+            </ProtectedAdminRoute>
+          }
+        />
 
         <Route
           path="/fee-management"
@@ -166,6 +348,8 @@ function AppRoutes() {
           }
         />
 
+        {/* ⭐ DYNAMIC FEE SETTINGS */}
+
         <Route
           path="/fee-settings"
           element={
@@ -175,7 +359,10 @@ function AppRoutes() {
           }
         />
 
-        {/* Others */}
+
+        {/* =================================================
+            OTHER
+        ================================================= */}
 
         <Route
           path="/archive"
@@ -195,6 +382,11 @@ function AppRoutes() {
           }
         />
 
+
+        {/* =================================================
+            404
+        ================================================= */}
+
         <Route
           path="*"
           element={<NotFound />}
@@ -203,8 +395,9 @@ function AppRoutes() {
       </Routes>
 
     </BrowserRouter>
+
   );
+
 }
 
 export default AppRoutes;
-

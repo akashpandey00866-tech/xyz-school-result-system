@@ -1,485 +1,1095 @@
-import StudentLayout from "../layouts/StudentLayout";
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+
+/* =========================================================
+   STUDENT DASHBOARD
+   Main dashboard only.
+   Navigation/header are handled by StudentLayout.
+========================================================= */
 
 function StudentDashboard() {
+  const navigate = useNavigate();
 
-  const student = JSON.parse(
-    localStorage.getItem("student")
-  ) || {};
+  /* =======================================================
+     STUDENT SESSION
+  ======================================================= */
 
-  const initials = student.name
-    ? student.name
-        .split(" ")
-        .map((word) => word[0])
-        .join("")
-        .substring(0, 2)
-        .toUpperCase()
-    : "ST";
+  const student = useMemo(() => {
+    try {
+      const localStudent =
+        localStorage.getItem("student");
+
+      const sessionStudent =
+        sessionStorage.getItem("student");
+
+      return JSON.parse(
+        localStudent ||
+          sessionStudent ||
+          "{}"
+      );
+    } catch (error) {
+      console.error(
+        "Student Session Error:",
+        error
+      );
+
+      return {};
+    }
+  }, []);
+
+  /* =======================================================
+     STUDENT DETAILS
+  ======================================================= */
+
+  const studentName =
+    student.name ||
+    student.fullName ||
+    student.studentName ||
+    "Student";
+
+  const enrollmentNo =
+    student.enrollmentNo ||
+    student.enrollmentNumber ||
+    "-";
+
+  const className =
+    student.className ||
+    student.class ||
+    "-";
+
+  const section =
+    student.section ||
+    "-";
+
+  const session =
+    student.session ||
+    "2026 - 2027";
+
+  const accountStatus =
+    student.accountStatus ||
+    "ACTIVE";
+
+  /* =======================================================
+     FEES
+  ======================================================= */
+
+  const annualFee = Number(
+    student.annualFee || 0
+  );
+
+  const paidFee = Number(
+    student.paidFee || 0
+  );
+
+  const calculatedDue =
+    Math.max(
+      annualFee - paidFee,
+      0
+    );
+
+  const dueFee =
+    student.dueFee !== undefined
+      ? Number(student.dueFee)
+      : calculatedDue;
+
+  const feePercentage =
+    annualFee > 0
+      ? Math.min(
+          Math.round(
+            (paidFee /
+              annualFee) *
+              100
+          ),
+          100
+        )
+      : 0;
+
+  /* =======================================================
+     RESULT DATA
+     
+     We don't show fake marks.
+     Real result will come from Firebase later.
+  ======================================================= */
+
+  const resultPublished =
+    student.resultPublished === true;
+
+  /* =======================================================
+     QUICK ACTIONS
+  ======================================================= */
+
+  const openResult = () => {
+    navigate(
+      "/student/result"
+    );
+  };
+
+  const openFees = () => {
+    navigate(
+      "/student/fees"
+    );
+  };
+
+  const openRechecking = () => {
+    navigate(
+      "/student/rechecking"
+    );
+  };
+
+  const openProfile = () => {
+    navigate(
+      "/student/profile"
+    );
+  };
+
+  /* =======================================================
+     DASHBOARD
+  ======================================================= */
 
   return (
+    <div className="space-y-6">
 
-<StudentLayout>
+      {/* ===================================================
+          WELCOME HERO
+      =================================================== */}
 
-<div className="max-w-7xl mx-auto">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-green-800 via-green-700 to-emerald-600 p-6 text-white shadow-lg sm:p-8">
 
-<div className="bg-gradient-to-r from-green-700 to-green-600 rounded-3xl shadow-xl p-8 text-white">
+        {/* Decorative shapes */}
 
-<div className="flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-white/10" />
 
-<div>
+        <div className="absolute -bottom-28 right-24 h-64 w-64 rounded-full bg-white/5" />
 
-<h1 className="text-4xl font-bold">
+        <div className="absolute right-8 top-8 hidden text-7xl opacity-10 sm:block">
+          🎓
+        </div>
 
-Welcome,
+        <div className="relative z-10">
 
-{student.name || "Student"} 👋
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-bold backdrop-blur">
 
-</h1>
+            <span className="h-2 w-2 rounded-full bg-green-300" />
 
-<p className="text-green-100 mt-3">
+            Academic Session {session}
 
-Student Portal Dashboard
+          </div>
 
-</p>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
 
-<p className="text-green-100 mt-1">
+            Welcome back,{" "}
+            {studentName.split(" ")[0]} 👋
 
-Academic Session 2026 - 2027
+          </h1>
 
-</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-green-50 sm:text-base">
 
-</div>
+            Manage your academic information, examination
+            results and fee details from your student portal.
 
-<div className="w-28 h-28 rounded-full bg-white text-green-700 flex items-center justify-center text-5xl font-bold shadow-lg">
+          </p>
 
-{initials}
+          {/* STUDENT BASIC INFO */}
 
-</div>
+          <div className="mt-5 flex flex-wrap gap-2">
 
-</div>
+            <span className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold backdrop-blur">
 
-</div>
+              🎓 Class {className}
 
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8"></div>
-{/* Result Card */}
+            </span>
 
-<div className="bg-white rounded-3xl shadow-lg p-8 hover:shadow-2xl transition">
+            <span className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold backdrop-blur">
 
-<div className="text-5xl">
+              📚 Section {section}
 
-📊
+            </span>
 
-</div>
+            <span className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold backdrop-blur">
 
-<h2 className="text-2xl font-bold text-green-700 mt-5">
+              🪪 {enrollmentNo}
 
-Result
+            </span>
 
-</h2>
+          </div>
 
-<p className="text-gray-500 mt-2">
+          {/* ACTIONS */}
 
-View your latest exam results
+          <div className="mt-6 flex flex-wrap gap-3">
 
-</p>
+            <button
+              onClick={openResult}
+              className="rounded-xl bg-white px-5 py-3 text-sm font-extrabold text-green-800 shadow-sm transition hover:bg-green-50"
+            >
+              📊 View Result
+            </button>
 
-<button
+            <button
+              onClick={openFees}
+              className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-extrabold text-white backdrop-blur transition hover:bg-white/20"
+            >
+              💰 Check Fees
+            </button>
 
-className="mt-6 w-full bg-green-700 hover:bg-green-800 text-white py-3 rounded-xl font-semibold transition"
+          </div>
 
->
+        </div>
 
-View Result
+      </section>
 
-</button>
+      {/* ===================================================
+          OVERVIEW CARDS
+      =================================================== */}
 
-</div>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-{/* Fee History Card */}
+        <OverviewCard
+          icon="📊"
+          title="Result"
+          value={
+            resultPublished
+              ? "Published"
+              : "Not Published"
+          }
+          description={
+            resultPublished
+              ? "Latest result available"
+              : "No published result"
+          }
+          iconBg="bg-green-50"
+          iconText="text-green-700"
+          onClick={openResult}
+        />
+
+        <OverviewCard
+          icon="💰"
+          title="Fee Due"
+          value={`₹${dueFee.toLocaleString()}`}
+          description={
+            dueFee > 0
+              ? "Payment pending"
+              : "All fees cleared"
+          }
+          iconBg="bg-blue-50"
+          iconText="text-blue-700"
+          onClick={openFees}
+        />
+
+        <OverviewCard
+          icon="🔍"
+          title="Rechecking"
+          value="Available"
+          description="Apply after result"
+          iconBg="bg-purple-50"
+          iconText="text-purple-700"
+          onClick={openRechecking}
+        />
+
+        <OverviewCard
+          icon="👤"
+          title="Profile"
+          value={accountStatus.toUpperCase()}
+          description="View student details"
+          iconBg="bg-orange-50"
+          iconText="text-orange-700"
+          onClick={openProfile}
+        />
+
+      </section>
+
+      {/* ===================================================
+          RESULT + FEES
+      =================================================== */}
+
+      <section className="grid gap-6 lg:grid-cols-5">
+
+        {/* =================================================
+            RESULT
+        ================================================= */}
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-3">
+
+          <div className="flex items-start justify-between">
+
+            <div className="flex items-center gap-3">
+
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-2xl">
+                📊
+              </div>
+
+              <div>
+
+                <h2 className="font-extrabold text-slate-900">
+                  Academic Result
+                </h2>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Your examination performance
+                </p>
 
-<div className="bg-white rounded-3xl shadow-lg p-8 hover:shadow-2xl transition">
+              </div>
+
+            </div>
 
-<div className="text-5xl">
+            <span
+              className={`rounded-full px-3 py-1 text-[10px] font-bold ${
+                resultPublished
+                  ? "bg-green-50 text-green-700"
+                  : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {resultPublished
+                ? "PUBLISHED"
+                : "PENDING"}
+            </span>
 
-💰
+          </div>
 
-</div>
+          <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5">
 
-<h2 className="text-2xl font-bold text-blue-700 mt-5">
+            <div className="flex items-center gap-4">
 
-Fee History
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm">
+                📝
+              </div>
 
-</h2>
+              <div className="min-w-0 flex-1">
 
-<p className="text-gray-500 mt-2">
+                <p className="text-sm font-bold text-slate-800">
+                  {resultPublished
+                    ? "Latest result is available"
+                    : "Result has not been published yet"}
+                </p>
 
-Check payments and receipts
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {resultPublished
+                    ? "Open the result section to view subject-wise marks, total, percentage and download your result."
+                    : "Once the school publishes your result, it will automatically become available in your Result section."}
+                </p>
 
-</p>
+              </div>
 
-<button
+            </div>
 
-className="mt-6 w-full bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-semibold transition"
+          </div>
 
->
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
 
-View Fees
+            <button
+              onClick={openResult}
+              className="rounded-xl bg-green-700 py-3 text-sm font-bold text-white transition hover:bg-green-800"
+            >
+              📊 Open Result
+            </button>
 
-</button>
+            <button
+              onClick={openRechecking}
+              className="rounded-xl border border-purple-200 bg-purple-50 py-3 text-sm font-bold text-purple-700 transition hover:bg-purple-100"
+            >
+              🔍 Rechecking
+            </button>
 
-</div>
+          </div>
 
-{/* Notice Card */}
+        </div>
 
-<div className="bg-white rounded-3xl shadow-lg p-8 hover:shadow-2xl transition">
+        {/* =================================================
+            FEES
+        ================================================= */}
 
-<div className="text-5xl">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
 
-📢
+          <div className="flex items-center gap-3">
 
-</div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-2xl">
+              💰
+            </div>
 
-<h2 className="text-2xl font-bold text-orange-600 mt-5">
+            <div>
 
-Notice
+              <h2 className="font-extrabold text-slate-900">
+                Fee Summary
+              </h2>
 
-</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Current academic fee status
+              </p>
 
-<p className="text-gray-500 mt-2">
+            </div>
 
-Latest school announcements
+          </div>
 
-</p>
+          {/* TOTAL */}
 
-<button
+          <div className="mt-6 flex items-end justify-between">
 
-className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-semibold transition"
+            <div>
 
->
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                Total Fee
+              </p>
 
-View Notice
+              <p className="mt-1 text-2xl font-extrabold text-slate-900">
+                ₹{annualFee.toLocaleString()}
+              </p>
 
-</button>
+            </div>
 
-</div>
+            <div className="text-right">
 
-</div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                Paid
+              </p>
 
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-    {/* Student Information */}
+              <p className="mt-1 text-lg font-extrabold text-blue-700">
+                ₹{paidFee.toLocaleString()}
+              </p>
 
-<div className="bg-white rounded-3xl shadow-lg p-8">
+            </div>
 
-<h2 className="text-2xl font-bold text-green-700 mb-6">
+          </div>
 
-Student Information
+          {/* PROGRESS */}
 
-</h2>
+          <div className="mt-6">
 
-<div className="space-y-5">
+            <div className="mb-2 flex justify-between">
 
-<div className="flex justify-between border-b pb-3">
+              <span className="text-[11px] font-bold text-slate-500">
+                Payment Progress
+              </span>
 
-<span className="text-gray-500">
+              <span className="text-[11px] font-extrabold text-blue-700">
+                {feePercentage}%
+              </span>
 
-Name
+            </div>
 
-</span>
+            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
 
-<strong>
+              <div
+                className="h-full rounded-full bg-blue-600 transition-all duration-700"
+                style={{
+                  width:
+                    `${feePercentage}%`,
+                }}
+              />
 
-{student.name || "-"}
+            </div>
 
-</strong>
+          </div>
 
-</div>
+          {/* DUE */}
 
-<div className="flex justify-between border-b pb-3">
+          <div className="mt-5 flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3">
 
-<span className="text-gray-500">
+            <span className="text-xs font-bold text-blue-700">
+              Pending Amount
+            </span>
 
-Enrollment
+            <span className="text-sm font-extrabold text-blue-900">
+              ₹{dueFee.toLocaleString()}
+            </span>
 
-</span>
+          </div>
 
-<strong>
+          <button
+            onClick={openFees}
+            className="mt-5 w-full rounded-xl border border-blue-200 bg-blue-50 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
+          >
+            💰 View Fee Details →
+          </button>
 
-{student.enrollmentNo || "-"}
+        </div>
 
-</strong>
+      </section>
 
-</div>
+      {/* ===================================================
+          ACADEMIC PROGRESS
+      =================================================== */}
 
-<div className="flex justify-between border-b pb-3">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-<span className="text-gray-500">
+        <div className="flex flex-wrap items-center justify-between gap-3">
 
-Class
+          <div>
 
-</span>
+            <h2 className="font-extrabold text-slate-900">
+              Academic Progress
+            </h2>
 
-<strong>
+            <p className="mt-1 text-xs text-slate-500">
+              Your academic performance overview
+            </p>
 
-Class {student.className || "-"} - {student.section || "-"}
+          </div>
 
-</strong>
+          <button
+            onClick={() =>
+              navigate(
+                "/student/progress"
+              )
+            }
+            className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
+          >
+            View Details →
+          </button>
 
-</div>
+        </div>
 
-<div className="flex justify-between border-b pb-3">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
-<span className="text-gray-500">
+          <ProgressItem
+            icon="📚"
+            title="Subjects"
+            value="Available"
+            description="View subjects"
+          />
 
-Session
+          <ProgressItem
+            icon="📝"
+            title="Examinations"
+            value="Academic"
+            description="Exam information"
+          />
 
-</span>
+          <ProgressItem
+            icon="🏆"
+            title="Performance"
+            value="Coming Soon"
+            description="Performance analysis"
+          />
 
-<strong>
+          <ProgressItem
+            icon="🥇"
+            title="Class Position"
+            value="Coming Soon"
+            description="Rank information"
+          />
 
-2026 - 2027
+        </div>
 
-</strong>
+        <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4">
 
-</div>
+          <div className="flex gap-3">
 
-<div className="flex justify-between">
+            <span className="text-xl">
+              💡
+            </span>
 
-<span className="text-gray-500">
+            <div>
 
-Status
+              <p className="text-xs font-bold text-slate-700">
+                Academic analytics
+              </p>
 
-</span>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                Subject performance, previous examination
+                comparison, overall percentage and class
+                position will be calculated once the required
+                academic data is available.
+              </p>
 
-<span className="bg-green-100 text-green-700 px-4 py-1 rounded-full text-sm font-semibold">
+            </div>
 
-Active
+          </div>
 
-</span>
+        </div>
 
-</div>
+      </section>
 
-</div>
+      {/* ===================================================
+          SCHOOL UPDATES + GUARDIAN
+      =================================================== */}
 
-</div>
+      <section className="grid gap-6 lg:grid-cols-3">
 
-{/* Fee Summary */}
+        {/* SCHOOL UPDATES */}
 
-<div className="bg-white rounded-3xl shadow-lg p-8">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
 
-<h2 className="text-2xl font-bold text-blue-700 mb-6">
+          <div className="flex items-center justify-between">
 
-Fee Summary
+            <div>
 
-</h2>
+              <h2 className="font-extrabold text-slate-900">
+                School Updates
+              </h2>
 
-<div className="space-y-5">
+              <p className="mt-1 text-xs text-slate-500">
+                Important information for students
+              </p>
 
-<div className="flex justify-between border-b pb-3">
+            </div>
 
-<span className="text-gray-500">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-xl">
+              📢
+            </div>
 
-Annual Fee
+          </div>
 
-</span>
+          <div className="mt-5 space-y-3">
 
-<strong>
+            <NoticeItem
+              icon="📚"
+              title="Academic Session"
+              text={`Current academic session is ${session}.`}
+              tag="Academic"
+            />
 
-₹ {Number(student.annualFee || 0).toLocaleString()}
+            <NoticeItem
+              icon="📊"
+              title="Result Updates"
+              text="Check the Result section whenever a new result is published."
+              tag="Result"
+            />
 
-</strong>
+            <NoticeItem
+              icon="💳"
+              title="Fee Updates"
+              text="Check your Fee section for payment details and receipts."
+              tag="Fees"
+            />
 
-</div>
+          </div>
 
-<div className="flex justify-between border-b pb-3">
+          <button
+            onClick={() =>
+              navigate(
+                "/student/notices"
+              )
+            }
+            className="mt-4 text-xs font-bold text-green-700 hover:underline"
+          >
+            View all notices →
+          </button>
 
-<span className="text-gray-500">
+        </div>
 
-Paid Fee
+        {/* GUARDIAN CONNECT */}
 
-</span>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-<strong className="text-green-700">
+          <div className="flex items-center gap-3">
 
-₹ {Number(student.paidFee || 0).toLocaleString()}
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-50 text-2xl">
+              👨‍👩‍👦
+            </div>
 
-</strong>
+            <div>
 
-</div>
+              <h2 className="font-extrabold text-slate-900">
+                Guardian Connect
+              </h2>
 
-<div className="flex justify-between border-b pb-3">
+              <p className="mt-1 text-xs text-slate-500">
+                Stay connected with school
+              </p>
 
-<span className="text-gray-500">
+            </div>
 
-Due Fee
+          </div>
 
-</span>
+          <div className="mt-5 space-y-3">
 
-<strong className="text-red-600">
+            <button
+              onClick={() =>
+                navigate(
+                  "/student/complaint"
+                )
+              }
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:bg-purple-50"
+            >
 
-₹ {Number(student.dueFee || 0).toLocaleString()}
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white">
+                📝
+              </span>
 
-</strong>
+              <span>
 
-</div>
+                <span className="block text-xs font-bold text-slate-700">
+                  Complaint
+                </span>
 
-<div className="flex justify-between">
+                <span className="block text-[10px] text-slate-400">
+                  Report an issue
+                </span>
 
-<span className="text-gray-500">
+              </span>
 
-Last Payment
+            </button>
 
-</span>
+            <button
+              onClick={() =>
+                navigate(
+                  "/student/suggestion"
+                )
+              }
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:bg-purple-50"
+            >
 
-<strong>
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white">
+                💡
+              </span>
 
-{student.lastPayment || "Not Available"}
+              <span>
 
-</strong>
+                <span className="block text-xs font-bold text-slate-700">
+                  Suggestion
+                </span>
 
-</div>
+                <span className="block text-[10px] text-slate-400">
+                  Share your idea
+                </span>
 
-</div>
+              </span>
 
-</div>
+            </button>
 
-</div>
+            <button
+              onClick={() =>
+                navigate(
+                  "/student/guardian"
+                )
+              }
+              className="w-full rounded-xl bg-purple-700 py-3 text-xs font-bold text-white transition hover:bg-purple-800"
+            >
+              Open Guardian Connect →
+            </button>
 
-<div className="bg-white rounded-3xl shadow-lg p-8 mt-8">
+          </div>
 
-<h2 className="text-2xl font-bold text-orange-600 mb-6">
+        </div>
 
-Latest School Notice
+      </section>
 
-</h2>
+      {/* ===================================================
+          STUDENT SERVICES
+      =================================================== */}
 
-<div className="space-y-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-<div className="border-l-4 border-green-700 pl-4">
+        <div>
 
-<h3 className="font-semibold">
+          <h2 className="font-extrabold text-slate-900">
+            Student Services
+          </h2>
 
-Half Yearly Examination
+          <p className="mt-1 text-xs text-slate-500">
+            Everything you may need during your academic journey
+          </p>
 
-</h3>
+        </div>
 
-<p className="text-gray-500 text-sm">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 
-Exams will start from 15 September 2026.
+          <ServiceCard
+            icon="👤"
+            title="My Profile"
+            description="Personal & academic details"
+            onClick={openProfile}
+          />
 
-</p>
+          <ServiceCard
+            icon="📅"
+            title="Academic Calendar"
+            description="Events & important dates"
+            onClick={() =>
+              navigate(
+                "/student/calendar"
+              )
+            }
+          />
 
-</div>
+          <ServiceCard
+            icon="📚"
+            title="Subjects"
+            description="Class subject information"
+            onClick={() =>
+              navigate(
+                "/student/subjects"
+              )
+            }
+          />
 
-<div className="border-l-4 border-blue-700 pl-4">
+          <ServiceCard
+            icon="📄"
+            title="Documents"
+            description="Academic documents"
+            onClick={() =>
+              navigate(
+                "/student/documents"
+              )
+            }
+          />
 
-<h3 className="font-semibold">
+          <ServiceCard
+            icon="🔔"
+            title="Notifications"
+            description="Important alerts"
+            onClick={() =>
+              navigate(
+                "/student/notifications"
+              )
+            }
+          />
 
-Fee Submission
+          <ServiceCard
+            icon="📝"
+            title="Examination"
+            description="Exam information"
+            onClick={() =>
+              navigate(
+                "/student/examination"
+              )
+            }
+          />
 
-</h3>
+          <ServiceCard
+            icon="📢"
+            title="School Notices"
+            description="Latest announcements"
+            onClick={() =>
+              navigate(
+                "/student/notices"
+              )
+            }
+          />
 
-<p className="text-gray-500 text-sm">
+          <ServiceCard
+            icon="🆘"
+            title="Help & Support"
+            description="Get school assistance"
+            onClick={() =>
+              navigate(
+                "/student/settings"
+              )
+            }
+          />
 
-Submit pending fees before 10 August.
+        </div>
 
-</p>
+      </section>
 
-</div>
+      {/* ===================================================
+          SECURITY / SESSION INFO
+      =================================================== */}
 
-<div className="border-l-4 border-orange-600 pl-4">
+      <section className="rounded-2xl border border-green-100 bg-green-50 p-5">
 
-<h3 className="font-semibold">
+        <div className="flex gap-3">
 
-Independence Day
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white">
+            🔐
+          </div>
 
-</h3>
+          <div>
 
-<p className="text-gray-500 text-sm">
+            <p className="text-xs font-extrabold text-green-800">
+              Secure Student Portal
+            </p>
 
-School will remain closed on 15 August.
+            <p className="mt-1 text-[11px] leading-5 text-green-700">
+              Your student account provides access only to
+              your academic and fee information. Passwords
+              are not displayed on the dashboard.
+            </p>
 
-</p>
+          </div>
 
-</div>
+        </div>
 
-</div>
+      </section>
 
-</div>
-{/* Quick Actions */}
+      {/* ===================================================
+          FOOTER
+      =================================================== */}
 
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+      <footer className="py-5 text-center">
 
-<div className="bg-green-700 rounded-3xl text-white p-8">
+        <p className="text-xs font-semibold text-slate-500">
+          © 2026 XYZ PUBLIC SCHOOL
+        </p>
 
-<h2 className="text-2xl font-bold">
+        <p className="mt-1 text-[10px] text-slate-400">
+          Student ERP Portal • Secure Academic Access
+        </p>
 
-Academic Session
+      </footer>
 
-</h2>
+    </div>
+  );
+}
 
-<p className="mt-4 text-green-100">
+/* =========================================================
+   OVERVIEW CARD
+========================================================= */
 
-2026 - 2027
+function OverviewCard({
+  icon,
+  title,
+  value,
+  description,
+  iconBg,
+  iconText,
+  onClick,
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+    >
 
-</p>
+      <div className="flex items-center justify-between">
 
-</div>
+        <div
+          className={`flex h-11 w-11 items-center justify-center rounded-xl ${iconBg} ${iconText} text-xl`}
+        >
+          {icon}
+        </div>
 
-<div className="bg-blue-700 rounded-3xl text-white p-8">
+        <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-green-600">
+          →
+        </span>
 
-<h2 className="text-2xl font-bold">
+      </div>
 
-Student Portal
+      <p className="mt-4 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        {title}
+      </p>
 
-</h2>
+      <p className="mt-1 truncate text-lg font-extrabold text-slate-900">
+        {value}
+      </p>
 
-<p className="mt-4 text-blue-100">
+      <p className="mt-1 text-[10px] text-slate-500">
+        {description}
+      </p>
 
-Welcome to your dashboard.
+    </button>
+  );
+}
 
-</p>
+/* =========================================================
+   PROGRESS ITEM
+========================================================= */
 
-</div>
+function ProgressItem({
+  icon,
+  title,
+  value,
+  description,
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
 
-<div className="bg-orange-600 rounded-3xl text-white p-8">
+      <div className="flex items-center gap-3">
 
-<h2 className="text-2xl font-bold">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-lg shadow-sm">
+          {icon}
+        </div>
 
-Support
+        <div className="min-w-0">
 
-</h2>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            {title}
+          </p>
 
-<p className="mt-4 text-orange-100">
+          <p className="mt-1 truncate text-xs font-extrabold text-slate-700">
+            {value}
+          </p>
 
-Contact School Office
+        </div>
 
-</p>
+      </div>
 
-</div>
+      <p className="mt-3 text-[10px] text-slate-400">
+        {description}
+      </p>
 
-</div>
+    </div>
+  );
+}
 
-{/* Footer */}
+/* =========================================================
+   NOTICE ITEM
+========================================================= */
 
-<div className="mt-10 text-center border-t pt-6">
+function NoticeItem({
+  icon,
+  title,
+  text,
+  tag,
+}) {
+  return (
+    <div className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
 
-<p className="text-gray-600">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-lg shadow-sm">
+        {icon}
+      </div>
 
-© 2026 XYZ PUBLIC SCHOOL
+      <div className="min-w-0 flex-1">
 
-</p>
+        <div className="flex flex-wrap items-center gap-2">
 
-<p className="text-sm text-gray-400 mt-2">
+          <h3 className="text-xs font-bold text-slate-800">
+            {title}
+          </h3>
 
-Student ERP Portal • Version 1.0
+          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[8px] font-bold text-slate-500">
+            {tag}
+          </span>
 
-</p>
+        </div>
 
-</div>
+        <p className="mt-1 text-[11px] leading-5 text-slate-500">
+          {text}
+        </p>
 
-</StudentLayout>
+      </div>
 
-);
+    </div>
+  );
+}
 
+/* =========================================================
+   SERVICE CARD
+========================================================= */
+
+function ServiceCard({
+  icon,
+  title,
+  description,
+  onClick,
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 text-left transition hover:border-green-100 hover:bg-green-50"
+    >
+
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-lg shadow-sm">
+        {icon}
+      </div>
+
+      <div className="min-w-0 flex-1">
+
+        <p className="truncate text-xs font-bold text-slate-700">
+          {title}
+        </p>
+
+        <p className="mt-0.5 truncate text-[10px] text-slate-400">
+          {description}
+        </p>
+
+      </div>
+
+      <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-green-600">
+        →
+      </span>
+
+    </button>
+  );
 }
 
 export default StudentDashboard;

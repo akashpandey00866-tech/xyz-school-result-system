@@ -557,7 +557,7 @@ className="w-full mt-2 border rounded-xl p-3"
 
 
 
-      {/* System Controls */}
+      /* System Controls */
 
       <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
 

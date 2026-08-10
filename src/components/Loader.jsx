@@ -1,50 +1,63 @@
 import { motion } from "framer-motion";
 import { LoaderCircle } from "lucide-react";
 
-const colors = [
-  "#2563eb",
-  "#16a34a",
-  "#9333ea",
-  "#f59e0b",
-  "#ef4444",
-];
+function Loader({
+  size = "md",
+  text = "Loading...",
+  fullScreen = false,
+}) {
+  const sizes = {
+    sm: 24,
+    md: 36,
+    lg: 52,
+  };
 
-const Loader = () => {
-  return (
-    <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-[9999]">
+  const spinnerSize = sizes[size] || sizes.md;
+
+  const content = (
+    <div className="flex flex-col items-center justify-center gap-3">
       <motion.div
-        animate={{
-          rotate: 360,
-          borderColor: colors,
-        }}
-        transition={{
-          rotate: {
-            repeat: Infinity,
-            duration: 1,
-            ease: "linear",
-          },
-          borderColor: {
-            repeat: Infinity,
-            duration: 3,
-          },
-        }}
-        className="w-16 h-16 rounded-full border-4 border-t-transparent"
-      />
-
-      <motion.p
-        className="mt-6 text-xl font-bold"
-        animate={{
-          color: colors,
-        }}
+        animate={{ rotate: 360 }}
         transition={{
           repeat: Infinity,
-          duration: 3,
+          duration: 0.9,
+          ease: "linear",
         }}
-      >
-        Loading...
-      </motion.p>
+        className="rounded-full border-4 border-emerald-100 border-t-emerald-600"
+        style={{
+          width: spinnerSize,
+          height: spinnerSize,
+        }}
+      />
+
+      {text && (
+        <motion.p
+          initial={{ opacity: 0.5 }}
+          animate={{ opacity: 1 }}
+          transition={{
+            repeat: Infinity,
+            repeatType: "reverse",
+            duration: 0.8,
+          }}
+          className="text-sm font-semibold text-slate-600"
+        >
+          {text}
+        </motion.p>
+      )}
     </div>
   );
-};
+
+  if (fullScreen) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/35 backdrop-blur-sm">
+        <div className="rounded-3xl bg-white px-8 py-7 shadow-2xl border border-slate-200">
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  return content;
+}
 
 export default Loader;
