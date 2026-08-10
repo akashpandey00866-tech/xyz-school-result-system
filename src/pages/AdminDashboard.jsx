@@ -1261,7 +1261,7 @@ function AdminDashboard() {
                 title="Manage Fees"
                 text="View student dues, collect payments and maintain payment history."
                 action="Open Fees"
-                onClick=() =>
+                onClick={() =>
                   navigate(
                     "/fee-management"
                   )
