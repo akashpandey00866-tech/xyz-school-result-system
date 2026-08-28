@@ -1,1323 +1,1351 @@
 import { useEffect, useMemo, useState } from "react";
-
 import {
   collection,
   doc,
-  getDocs,
   onSnapshot,
-  setDoc,
   serverTimestamp,
+  setDoc,
+  deleteDoc,
 } from "firebase/firestore";
-
-import {
-  WalletCards,
-  GraduationCap,
-  IndianRupee,
-  Save,
-  RefreshCw,
-  Search,
-  CheckCircle2,
-  Settings2,
-  Info,
-  Sparkles,
-} from "lucide-react";
-
 import AdminLayout from "../layouts/AdminLayout";
 import { db } from "../config/firebase";
-import FullScreenLoader from "../components/FullScreenLoader";
-
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function normalize(value) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase();
-}
-
-
-function getFeeKey(className) {
-
-  const value =
-    String(className || "")
-      .trim()
-      .toLowerCase();
-
-  const numberMatch =
-    value.match(/\d+/);
-
-  if (numberMatch) {
-    return `class${numberMatch[0]}`;
-  }
-
-  return value
-    .replace(/^class\s*/i, "")
-    .replace(/[^a-z0-9]/g, "");
-}
-
-
-function compareClasses(a, b) {
-
-  const aName =
-    String(a?.name || "").trim();
-
-  const bName =
-    String(b?.name || "").trim();
-
-  const specialOrder = {
-    "pre nursery": 0,
-    "pre-nursery": 0,
-    "play group": 1,
-    "playgroup": 1,
-    nursery: 2,
-    lkg: 3,
-    ukg: 4,
-  };
-
-  const aNormalized =
-    aName.toLowerCase();
-
-  const bNormalized =
-    bName.toLowerCase();
-
-  const aSpecial =
-    specialOrder[aNormalized];
-
-  const bSpecial =
-    specialOrder[bNormalized];
-
-  if (
-    aSpecial !== undefined &&
-    bSpecial !== undefined
-  ) {
-    return aSpecial - bSpecial;
-  }
-
-  if (
-    aSpecial !== undefined
-  ) {
-    return -1;
-  }
-
-  if (
-    bSpecial !== undefined
-  ) {
-    return 1;
-  }
-
-  const aNumber =
-    aName.match(/\d+/);
-
-  const bNumber =
-    bName.match(/\d+/);
-
-  if (aNumber && bNumber) {
-
-    const difference =
-      Number(aNumber[0]) -
-      Number(bNumber[0]);
-
-    if (difference !== 0) {
-      return difference;
-    }
-  }
-
-  if (aNumber && !bNumber) {
-    return -1;
-  }
-
-  if (!aNumber && bNumber) {
-    return 1;
-  }
-
-  return aName.localeCompare(
-    bName,
-    undefined,
-    {
-      numeric: true,
-      sensitivity: "base",
-    }
-  );
-}
-
-
-function money(value) {
-
-  return `₹ ${Number(
-    value || 0
-  ).toLocaleString("en-IN")}`;
-
-}
-
-
-/* =========================================================
-   COMPONENT
-========================================================= */
-
-function FeeSettings() {
-
-  const [classes, setClasses] =
-    useState([]);
-
-  const [fees, setFees] =
-    useState({});
-
-  const [session, setSession] =
-    useState("");
-
-  const [updatedBy, setUpdatedBy] =
-    useState("Admin");
-
-  const [search, setSearch] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [message, setMessage] =
-    useState("");
-
-  const [error, setError] =
-    useState("");
-
-
-  /* =======================================================
-     LOAD CLASSES
-  ======================================================= */
-
-  async function loadClasses() {
-
-    try {
-
-      setLoading(true);
-      setError("");
-
-      const snapshot =
-        await getDocs(
-          collection(
-            db,
-            "classes"
-          )
-        );
-
-      const list = [];
-
-      snapshot.forEach(
-        (classDoc) => {
-
-          const data =
-            classDoc.data();
-
-          if (
-            data.status === false
-          ) {
-            return;
-          }
-
-          const name =
-            data.name ||
-            data.className ||
-            data.title ||
-            "";
-
-          if (!name) {
-            return;
-          }
-
-          list.push({
-
-            id: classDoc.id,
-
-            name,
-
-            sessionId:
-              data.sessionId ||
-              "",
-
-            sessionName:
-              data.sessionName ||
-              "",
-
-            sections:
-              Array.isArray(
-                data.sections
-              )
-                ? data.sections
-                : [],
-
-          });
-
-        }
-      );
-
-      list.sort(
-        compareClasses
-      );
-
-      setClasses(list);
-
-    }
-
-    catch (err) {
-
-      console.error(
-        "Class loading error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Unable to load classes."
-      );
-
-    }
-
-    finally {
-
-      setLoading(false);
-
-    }
-
-  }
-
-
-  /* =======================================================
-     LOAD FEE SETTINGS REALTIME
-  ======================================================= */
+import AdvancedTransportMap from "../components/AdvancedTransportMap";
+
+const money = (value) =>
+  `₹ ${Number(value || 0).toLocaleString("en-IN")}`;
+
+const numberValue = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
+
+const emptyForm = {
+  tuitionFee: 0,
+  examFee: 0,
+  otherFee: 0,
+  transportFee: 0,
+};
+
+const emptyRoute = {
+  name: "",
+  code: "",
+  fee: 0,
+  monthlyFee: 0,
+  stops: "",
+  active: true,
+};
+
+export default function FeeSettings() {
+  const [classes, setClasses] = useState([]);
+  const [feeStructures, setFeeStructures] = useState({});
+  const [settings, setSettings] = useState({});
+  const [routes, setRoutes] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [selectedRouteId, setSelectedRouteId] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+
+  const [selectedClass, setSelectedClass] = useState("");
+  const [form, setForm] = useState(emptyForm);
+  const [routeForm, setRouteForm] = useState(emptyRoute);
+  const [mapRouteDraft, setMapRouteDraft] = useState({
+    name: "Route 01",
+    code: "R01",
+    fee: 0,
+    monthlyFee: 0,
+    stops: [],
+    active: true,
+  });
+
+  const [activeTab, setActiveTab] = useState("academic");
+  const [search, setSearch] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savingRoute, setSavingRoute] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-
-    loadClasses();
-
-    const unsubscribe =
-      onSnapshot(
-        doc(
-          db,
-          "settings",
-          "feeSettings"
-        ),
-
-        (snapshot) => {
-
-          if (
-            snapshot.exists()
-          ) {
-
-            const data =
-              snapshot.data();
-
-            /* ---------------------------------------------
-               NEW DYNAMIC STRUCTURE
-            --------------------------------------------- */
-
-            if (
-              data.classFees &&
-              typeof data.classFees ===
-                "object"
-            ) {
-
-              setFees(
-                data.classFees
-              );
-
-            }
-
-            else {
-
-              /* -------------------------------------------
-                 OLD CLASS1-CLASS12 STRUCTURE
-                 Convert it into dynamic structure later
-              ------------------------------------------- */
-
-              const oldFees = {};
-
-              Object.keys(data)
-                .filter(
-                  (key) =>
-                    key.startsWith(
-                      "class"
-                    )
-                )
-                .forEach(
-                  (key) => {
-
-                    oldFees[key] =
-                      Number(
-                        data[key] || 0
-                      );
-
-                  }
-                );
-
-              setFees(
-                oldFees
-              );
-
-            }
-
-            setSession(
-              data.session ||
-                ""
-            );
-
-            setUpdatedBy(
-              data.updatedBy ||
-                "Admin"
-            );
-
-          }
-
-          else {
-
-            setFees({});
-
-          }
-
-        },
-
-        (err) => {
-
-          console.error(
-            "Fee settings listener error:",
-            err
-          );
-
-          setError(
-            err?.message ||
-              "Unable to load fee settings."
-          );
-
-        }
-      );
-
-    return () =>
-      unsubscribe();
-
-  }, []);
-
-
-  /* =======================================================
-     FILTER CLASSES
-  ======================================================= */
-
-  const filteredClasses =
-    useMemo(() => {
-
-      const query =
-        normalize(search);
-
-      if (!query) {
-        return classes;
-      }
-
-      return classes.filter(
-        (item) =>
-          normalize(
-            item.name
-          ).includes(query)
-      );
-
-    }, [
-      classes,
-      search,
-    ]);
-
-
-  /* =======================================================
-     UPDATE FEE
-  ======================================================= */
-
-  function handleFeeChange(
-    classId,
-    value
-  ) {
-
-    const numericValue =
-      value === ""
-        ? ""
-        : Math.max(
-            0,
-            Number(value)
-          );
-
-    setFees(
-      (previous) => ({
-
-        ...previous,
-
-        [classId]:
-          numericValue,
-
-      })
-    );
-
-  }
-
-
-  /* =======================================================
-     TOTAL
-  ======================================================= */
-
-  const totalFee =
-    useMemo(() => {
-
-      return classes.reduce(
-        (sum, classItem) => {
-
-          return (
-            sum +
-            Number(
-              fees[
-                classItem.id
-              ] || 0
+    const unsubClasses = onSnapshot(
+      collection(db, "classes"),
+      (snap) => {
+        const rows = snap.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .sort((a, b) =>
+            String(a.name || a.className || a.id).localeCompare(
+              String(b.name || b.className || b.id),
+              undefined,
+              { numeric: true }
             )
           );
 
-        },
-        0
-      );
+        setClasses(rows);
 
-    }, [
-      classes,
-      fees,
-    ]);
-
-
-  const configuredCount =
-    classes.filter(
-      (item) =>
-        Number(
-          fees[item.id] || 0
-        ) > 0
-    ).length;
-
-
-  /* =======================================================
-     SAVE
-  ======================================================= */
-
-  async function handleSave() {
-
-    try {
-
-      setSaving(true);
-      setMessage("");
-      setError("");
-
-      const dynamicFees = {};
-
-      classes.forEach(
-        (classItem) => {
-
-          dynamicFees[
-            classItem.id
-          ] =
-            Number(
-              fees[
-                classItem.id
-              ] || 0
-            );
-
-        }
-      );
-
-
-      /* ===================================================
-         LEGACY COMPATIBILITY
-
-         Existing AddStudent / old records may still
-         understand class1, class2 etc.
-
-         So we keep both structures.
-      =================================================== */
-
-      const legacyFees = {};
-
-      classes.forEach(
-        (classItem) => {
-
-          const fee =
-            Number(
-              fees[
-                classItem.id
-              ] || 0
-            );
-
-          const feeKey =
-            getFeeKey(
-              classItem.name
-            );
-
-          if (feeKey) {
-
-            legacyFees[
-              feeKey
-            ] = fee;
-
-          }
-
-        }
-      );
-
-
-      await setDoc(
-
-        doc(
-          db,
-          "settings",
-          "feeSettings"
-        ),
-
-        {
-
-          /* NEW */
-
-          classFees:
-            dynamicFees,
-
-          /* OLD COMPATIBILITY */
-
-          ...legacyFees,
-
-          session,
-
-          updatedBy,
-
-          lastUpdated:
-            serverTimestamp(),
-
-        },
-
-        {
-          merge: true,
+        if (!selectedClass && rows.length) {
+          setSelectedClass(rows[0].id);
         }
 
-      );
-
-
-      setMessage(
-        "✅ Fee structure saved successfully."
-      );
-
-      window.setTimeout(
-        () =>
-          setMessage(""),
-        3500
-      );
-
-    }
-
-    catch (err) {
-
-      console.error(
-        "Fee save error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Unable to save fee structure."
-      );
-
-    }
-
-    finally {
-
-      setSaving(false);
-
-    }
-
-  }
-
-
-  /* =======================================================
-     RESET
-  ======================================================= */
-
-  function handleReset() {
-
-    loadClasses();
-
-  }
-
-
-  /* =======================================================
-     LOADING
-  ======================================================= */
-
-  if (loading) {
-
-    return (
-
-      <FullScreenLoader
-        message="Loading fee management..."
-      />
-
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Fee Settings classes:", err);
+        setError(err?.message || "Unable to load classes.");
+        setLoading(false);
+      }
     );
 
+    const unsubStructures = onSnapshot(
+      collection(db, "feeStructures"),
+      (snap) => {
+        const next = {};
+        snap.docs.forEach((item) => {
+          next[item.id] = {
+            id: item.id,
+            ...item.data(),
+          };
+        });
+        setFeeStructures(next);
+      },
+      (err) => {
+        console.error("Fee Settings structures:", err);
+        setError(err?.message || "Unable to load fee structures.");
+      }
+    );
+
+    const unsubSettings = onSnapshot(
+      doc(db, "settings", "feeSettings"),
+      (snap) => {
+        setSettings(snap.exists() ? snap.data() : {});
+      },
+      (err) => {
+        console.error("Fee Settings document:", err);
+        setError(err?.message || "Unable to load fee settings.");
+      }
+    );
+
+    const unsubRoutes = onSnapshot(
+      collection(db, "transportRoutes"),
+      (snap) => {
+        setRoutes(
+          snap.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .sort((a, b) =>
+              String(a.name || "").localeCompare(String(b.name || ""))
+            )
+        );
+      },
+      (err) => {
+        console.error("Transport routes:", err);
+        setRoutes([]);
+      }
+    );
+
+    const unsubStudents = onSnapshot(
+      collection(db, "students"),
+      (snap) => {
+        setStudents(
+          snap.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .sort((a, b) =>
+              String(a.name || "").localeCompare(String(b.name || ""))
+            )
+        );
+      },
+      (err) => {
+        console.error("Transport student mapping:", err);
+        setStudents([]);
+      }
+    );
+
+    return () => {
+      unsubClasses();
+      unsubStructures();
+      unsubSettings();
+      unsubRoutes();
+      unsubStudents();
+    };
+  }, [selectedClass]);
+
+  useEffect(() => {
+    if (selectedRouteId) {
+      const selected = routes.find((item) => item.id === selectedRouteId);
+      if (selected) {
+        setMapRouteDraft({
+          ...selected,
+          stops: Array.isArray(selected.stops) ? selected.stops : [],
+        });
+      }
+    } else {
+      setMapRouteDraft((previous) => ({
+        ...previous,
+        name: routeForm.name || previous.name,
+        code: routeForm.code || previous.code,
+        fee: numberValue(routeForm.fee),
+        monthlyFee: numberValue(routeForm.monthlyFee),
+      }));
+    }
+  }, [selectedRouteId, routes, routeForm.name, routeForm.code, routeForm.fee, routeForm.monthlyFee]);
+
+  const classRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return classes
+      .map((item) => {
+        const name = String(
+          item.name || item.className || item.label || item.id
+        ).trim();
+
+        const structure =
+          feeStructures[`class-${name}`] ||
+          feeStructures[item.id] ||
+          {};
+
+        const tuition = numberValue(structure.tuitionFee);
+        const exam = numberValue(structure.examFee);
+        const other = numberValue(structure.otherFee);
+        const transport = numberValue(structure.transportFee);
+
+        return {
+          id: item.id,
+          name,
+          tuition,
+          exam,
+          other,
+          transport,
+          academicTotal: tuition + exam + other,
+          grandTotal: tuition + exam + other + transport,
+          active: structure.status !== "INACTIVE",
+        };
+      })
+      .filter((item) =>
+        query
+          ? `${item.name} ${item.id}`.toLowerCase().includes(query)
+          : true
+      );
+  }, [classes, feeStructures, search]);
+
+  const filteredTransportStudents = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+
+    return students.filter((student) => {
+      if (!q) return true;
+
+      return `${student.name || ""} ${student.enrollmentNo || ""} ${student.className || student.class || ""}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [students, studentSearch]);
+
+  const selectedTransportStudent = students.find(
+    (student) => student.id === selectedStudentId
+  );
+
+  const selectedTransportRoute = routes.find(
+    (route) => route.id === selectedRouteId
+  );
+
+  useEffect(() => {
+    if (!selectedTransportStudent) {
+      setSelectedRouteId("");
+      return;
+    }
+
+    setSelectedRouteId(
+      selectedTransportStudent.transportRouteId ||
+        selectedTransportStudent.routeId ||
+        ""
+    );
+  }, [selectedTransportStudent]);
+
+  const selectedClassRow = useMemo(
+    () =>
+      classRows.find((item) => item.id === selectedClass) ||
+      classRows.find((item) => item.name === selectedClass) ||
+      classRows[0] ||
+      null,
+    [classRows, selectedClass]
+  );
+
+  useEffect(() => {
+    if (!selectedClassRow) return;
+
+    const structure =
+      feeStructures[`class-${selectedClassRow.name}`] ||
+      feeStructures[selectedClassRow.id] ||
+      {};
+
+    setForm({
+      tuitionFee: numberValue(structure.tuitionFee),
+      examFee: numberValue(structure.examFee),
+      otherFee: numberValue(structure.otherFee),
+      transportFee: numberValue(structure.transportFee),
+    });
+  }, [selectedClassRow, feeStructures]);
+
+  const academicTotal =
+    numberValue(form.tuitionFee) +
+    numberValue(form.examFee) +
+    numberValue(form.otherFee);
+
+  const grandTotal =
+    academicTotal + numberValue(form.transportFee);
+
+  async function saveClassFees() {
+    if (!selectedClassRow) {
+      setError("Please select a class first.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const className = selectedClassRow.name;
+      const transportFee = numberValue(form.transportFee);
+
+      const structure = {
+        classId: selectedClassRow.id,
+        className,
+        sessionName:
+          settings.sessionName ||
+          settings.session ||
+          "2026-27",
+
+        tuitionFee: numberValue(form.tuitionFee),
+        examFee: numberValue(form.examFee),
+        otherFee: numberValue(form.otherFee),
+
+        transportFee,
+
+        academicTotal,
+        total: grandTotal,
+
+        transportationEnabled: transportFee > 0,
+        status: "ACTIVE",
+        schemaVersion: 3,
+
+        updatedBy: "Admin",
+        updatedAt: serverTimestamp(),
+      };
+
+      await setDoc(
+        doc(db, "feeStructures", `class-${className}`),
+        structure,
+        { merge: true }
+      );
+
+      const legacyKey = String(className).match(/\d+/)?.[0];
+
+      await setDoc(
+        doc(db, "settings", "feeSettings"),
+        {
+          classFees: {
+            ...(settings.classFees || {}),
+            [selectedClassRow.id]: academicTotal,
+          },
+
+          ...(legacyKey
+            ? {
+                [`class${legacyKey}`]: academicTotal,
+              }
+            : {}),
+
+          session:
+            settings.session ||
+            settings.sessionName ||
+            "2026-27",
+
+          sessionName:
+            settings.sessionName ||
+            settings.session ||
+            "2026-27",
+
+          lastUpdated: serverTimestamp(),
+          updatedBy: "Admin",
+          schemaVersion: 3,
+        },
+        { merge: true }
+      );
+
+      setMessage(
+        `${className} fee structure saved. Academic ${money(
+          academicTotal
+        )} + Transportation ${money(transportFee)} = ${money(
+          grandTotal
+        )}.`
+      );
+    } catch (err) {
+      console.error("Fee structure save:", err);
+      setError(err?.message || "Unable to save fee structure.");
+    } finally {
+      setSaving(false);
+    }
   }
 
+  async function saveRoute() {
+    const name = routeForm.name.trim();
 
-  /* =======================================================
-     UI
-  ======================================================= */
+    if (!name) {
+      setError("Transport route name is required.");
+      return;
+    }
+
+    setSavingRoute(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const routeId =
+        routeForm.id ||
+        `route-${Date.now().toString(36)}`;
+
+      await setDoc(
+        doc(db, "transportRoutes", routeId),
+        {
+          name,
+          code:
+            routeForm.code.trim() ||
+            name.toUpperCase().replace(/\s+/g, "-"),
+          fee: numberValue(routeForm.fee),
+          monthlyFee: numberValue(routeForm.monthlyFee),
+          stops: Array.isArray(mapRouteDraft.stops)
+            ? mapRouteDraft.stops
+            : String(routeForm.stops || "")
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+          active: routeForm.active !== false,
+          updatedBy: "Admin",
+          updatedAt: serverTimestamp(),
+          schemaVersion: 1,
+        },
+        { merge: true }
+      );
+
+      setRouteForm(emptyRoute);
+      setMapRouteDraft({ name: "Route 01", code: "R01", fee: 0, monthlyFee: 0, stops: [], active: true });
+      setMessage("Transportation route saved successfully.");
+    } catch (err) {
+      console.error("Transport route save:", err);
+      setError(err?.message || "Unable to save transport route.");
+    } finally {
+      setSavingRoute(false);
+    }
+  }
+
+  async function saveStudentTransportMapping() {
+    if (!selectedTransportStudent) {
+      setError("Please select a student.");
+      return;
+    }
+
+    if (!selectedTransportRoute) {
+      setError("Please select a transportation route.");
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      const annualRouteFee = numberValue(
+        selectedTransportRoute.fee ||
+          selectedTransportRoute.annualFee ||
+          selectedTransportRoute.monthlyFee * 12
+      );
+
+      await setDoc(
+        doc(db, "students", selectedTransportStudent.id),
+        {
+          transportEnabled: true,
+          transportRouteId: selectedTransportRoute.id,
+          transportRouteName: selectedTransportRoute.name,
+          transportRouteCode: selectedTransportRoute.code || "",
+          transportFee: annualRouteFee,
+          transportationFee: annualRouteFee,
+          transportCharge: annualRouteFee,
+          transportMappedAt: serverTimestamp(),
+          transportMappingUpdatedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setMessage(
+        `${selectedTransportStudent.name || "Student"} mapped to ${selectedTransportRoute.name}. Annual transport charge: ${money(annualRouteFee)}.`
+      );
+    } catch (err) {
+      console.error("Student transport mapping:", err);
+      setError(err?.message || "Unable to map transport route.");
+    }
+  }
+
+  async function clearStudentTransportMapping() {
+    if (!selectedTransportStudent) return;
+
+    try {
+      await setDoc(
+        doc(db, "students", selectedTransportStudent.id),
+        {
+          transportEnabled: false,
+          transportRouteId: "",
+          transportRouteName: "",
+          transportRouteCode: "",
+          transportFee: 0,
+          transportationFee: 0,
+          transportCharge: 0,
+          transportMappingUpdatedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setSelectedRouteId("");
+      setMessage(
+        `${selectedTransportStudent.name || "Student"} transport mapping removed.`
+      );
+    } catch (err) {
+      console.error("Clear transport mapping:", err);
+      setError(err?.message || "Unable to remove transport mapping.");
+    }
+  }
+
+  async function removeRoute(routeId) {
+    if (!routeId) return;
+
+    const ok = window.confirm(
+      "Remove this transport route from Fee Settings?"
+    );
+
+    if (!ok) return;
+
+    try {
+      await deleteDoc(doc(db, "transportRoutes", routeId));
+      setMessage("Transportation route removed.");
+    } catch (err) {
+      console.error("Transport route delete:", err);
+      setError(err?.message || "Unable to remove route.");
+    }
+  }
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="min-h-[70vh] flex items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 rounded-full border-4 border-slate-200 border-t-blue-600 animate-spin" />
+            <p className="mt-4 text-sm font-black text-slate-700">
+              Loading Fee Settings…
+            </p>
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
-
     <AdminLayout>
+      <div className="min-h-full bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1500px] space-y-6">
+          <header className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 p-6 text-white shadow-xl sm:p-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <span className="rounded-full bg-cyan-400/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-cyan-300">
+                  Finance Control Center
+                </span>
 
-      <div className="max-w-[1450px] mx-auto p-4 sm:p-6 lg:p-8">
+                <h1 className="mt-3 text-3xl font-black sm:text-4xl">
+                  Fee Settings
+                </h1>
 
-
-        {/* =================================================
-            HERO
-        ================================================= */}
-
-        <section className="relative overflow-hidden rounded-[30px] bg-gradient-to-br from-emerald-950 via-green-800 to-emerald-600 text-white shadow-xl">
-
-          <div className="absolute -right-24 -top-28 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
-
-          <div className="relative p-6 sm:p-8">
-
-            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
-
-              <div className="flex items-start gap-4">
-
-                <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center">
-
-                  <WalletCards
-                    size={29}
-                  />
-
-                </div>
-
-                <div>
-
-                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-bold">
-
-                    <Sparkles
-                      size={13}
-                    />
-
-                    Dynamic Fee Management
-
-                  </span>
-
-                  <h1 className="text-3xl sm:text-4xl font-black mt-3">
-
-                    Fee Management
-
-                  </h1>
-
-                  <p className="text-emerald-100 mt-2 max-w-2xl">
-
-                    Configure annual fees for every
-                    class created in Academic Configuration.
-
-                  </p>
-
-                </div>
-
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+                  Manage academic fees, transportation charges and routes
+                  from one place. Changes are saved to Firebase and are
+                  reflected in connected fee screens.
+                </p>
               </div>
 
-
-              <button
-                type="button"
-                onClick={handleReset}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white text-green-800 font-bold hover:bg-emerald-50"
-              >
-
-                <RefreshCw
-                  size={18}
-                />
-
-                Refresh Classes
-
-              </button>
-
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                  Active Session
+                </p>
+                <p className="mt-1 text-lg font-black">
+                  {settings.sessionName ||
+                    settings.session ||
+                    "2026-27"}
+                </p>
+              </div>
             </div>
+          </header>
 
-          </div>
-
-        </section>
-
-
-        {/* =================================================
-            SUMMARY
-        ================================================= */}
-
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-6">
-
-
-          <SummaryCard
-            icon={
-              <GraduationCap
-                size={21}
-              />
-            }
-            title="Total Classes"
-            value={classes.length}
-            text="From Academic Configuration"
-          />
-
-
-          <SummaryCard
-            icon={
-              <CheckCircle2
-                size={21}
-              />
-            }
-            title="Configured"
-            value={configuredCount}
-            text="Classes with fee"
-          />
-
-
-          <SummaryCard
-            icon={
-              <IndianRupee
-                size={21}
-              />
-            }
-            title="Total Fee Value"
-            value={money(totalFee)}
-            text="Configured class total"
-          />
-
-
-          <SummaryCard
-            icon={
-              <WalletCards
-                size={21}
-              />
-            }
-            title="Database"
-            value="LIVE"
-            text="Firebase realtime"
-          />
-
-        </div>
-
-
-        {/* =================================================
-            SESSION
-        ================================================= */}
-
-        <section className="bg-white border border-slate-200 rounded-3xl shadow-sm p-5 mt-6">
-
-          <div className="grid md:grid-cols-2 gap-5">
-
-            <div>
-
-              <label className="text-sm font-bold text-slate-700">
-
-                Academic Session
-
-              </label>
-
-              <input
-                type="text"
-                value={session}
-                onChange={(e) =>
-                  setSession(
-                    e.target.value
-                  )
-                }
-                placeholder="2026-2027"
-                className="w-full h-12 mt-2 px-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none"
-              />
-
+          {(message || error) && (
+            <div
+              className={`rounded-2xl border p-4 text-sm font-semibold ${
+                error
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              }`}
+            >
+              {error || message}
             </div>
-
-
-            <div>
-
-              <label className="text-sm font-bold text-slate-700">
-
-                Updated By
-
-              </label>
-
-              <input
-                type="text"
-                value={updatedBy}
-                onChange={(e) =>
-                  setUpdatedBy(
-                    e.target.value
-                  )
-                }
-                placeholder="Admin"
-                className="w-full h-12 mt-2 px-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none"
-              />
-
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* =================================================
-            SEARCH
-        ================================================= */}
-
-        <section className="bg-white border border-slate-200 rounded-3xl shadow-sm p-5 mt-6">
-
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-
-            <div>
-
-              <h2 className="text-xl font-black">
-
-                Class-wise Annual Fee
-
-              </h2>
-
-              <p className="text-sm text-slate-500 mt-1">
-
-                Classes are automatically loaded
-                from Academic Configuration.
-
-              </p>
-
-            </div>
-
-
-            <div className="relative w-full md:max-w-md">
-
-              <Search
-                size={19}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-
-              <input
-                type="text"
-                value={search}
-                onChange={(e) =>
-                  setSearch(
-                    e.target.value
-                  )
-                }
-                placeholder="Search LKG, UKG, Nursery, Class 1..."
-                className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none"
-              />
-
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* =================================================
-            CLASS CARDS
-        ================================================= */}
-
-        <section className="mt-6">
-
-          {filteredClasses.length === 0 ? (
-
-            <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center">
-
-              <GraduationCap
-                size={44}
-                className="mx-auto text-slate-300"
-              />
-
-              <h2 className="text-xl font-black mt-4">
-
-                No Classes Found
-
-              </h2>
-
-              <p className="text-sm text-slate-500 mt-2">
-
-                Create a class in Academic Configuration
-                first.
-
-              </p>
-
-            </div>
-
-          ) : (
-
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
-
-              {filteredClasses.map(
-                (classItem) => {
-
-                  const fee =
-                    fees[
-                      classItem.id
-                    ] ?? "";
-
-                  const configured =
-                    Number(
-                      fee || 0
-                    ) > 0;
-
-
-                  return (
-
-                    <div
-                      key={
-                        classItem.id
-                      }
-                      className={`bg-white border rounded-3xl p-5 shadow-sm hover:shadow-lg transition ${
-                        configured
-                          ? "border-green-200"
-                          : "border-slate-200"
-                      }`}
-                    >
-
-                      <div className="flex items-start justify-between gap-3">
-
-                        <div className="flex items-center gap-3">
-
-                          <div className="w-12 h-12 rounded-2xl bg-green-50 text-green-700 flex items-center justify-center">
-
-                            <GraduationCap
-                              size={23}
-                            />
-
-                          </div>
-
-                          <div>
-
-                            <h3 className="text-xl font-black">
-
-                              {classItem.name}
-
-                            </h3>
-
-                            <p className="text-xs text-slate-500 mt-1">
-
-                              {classItem.sections?.length
-                                ? `${classItem.sections.length} section${classItem.sections.length > 1 ? "s" : ""}`
-                                : "No sections configured"}
-
-                            </p>
-
-                          </div>
-
-                        </div>
-
-
-                        {configured && (
-
-                          <CheckCircle2
-                            size={21}
-                            className="text-green-600"
-                          />
-
-                        )}
-
-                      </div>
-
-
-                      <div className="mt-6">
-
-                        <label className="text-sm font-bold text-slate-700">
-
-                          Annual Fee
-
-                        </label>
-
-
-                        <div className="relative mt-2">
-
-                          <IndianRupee
-                            size={19}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 text-green-600"
-                          />
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={fee}
-                            onChange={(e) =>
-                              handleFeeChange(
-                                classItem.id,
-                                e.target.value
-                              )
-                            }
-                            placeholder="Enter annual fee"
-                            className="w-full h-14 pl-11 pr-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none text-lg font-black"
-                          />
-
-                        </div>
-
-                      </div>
-
-
-                      <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-3">
-
-                        <div className="flex items-center justify-between">
-
-                          <span className="text-xs text-slate-500">
-
-                            Current Fee
-
-                          </span>
-
-                          <strong className="text-green-700">
-
-                            {money(fee)}
-
-                          </strong>
-
-                        </div>
-
-                      </div>
-
-
-                      <div className="mt-3 text-xs text-slate-400 flex items-center gap-1">
-
-                        <Info
-                          size={13}
-                        />
-
-                        Automatically connected to
-                        student admission.
-
-                      </div>
-
-                    </div>
-
-                  );
-
-                }
-              )}
-
-            </div>
-
           )}
 
-        </section>
-
-
-        {/* =================================================
-            MESSAGE
-        ================================================= */}
-
-        {(message || error) && (
-
-          <div
-            className={`mt-6 rounded-2xl p-4 border font-semibold ${
-              error
-                ? "bg-red-50 border-red-200 text-red-700"
-                : "bg-green-50 border-green-200 text-green-700"
-            }`}
-          >
-
-            {error ||
-              message}
-
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat
+              label="Classes"
+              value={classRows.length}
+              icon="🏫"
+            />
+            <Stat
+              label="Configured Academic"
+              value={money(
+                classRows.reduce(
+                  (sum, item) => sum + item.academicTotal,
+                  0
+                )
+              )}
+              icon="🎓"
+            />
+            <Stat
+              label="Transportation"
+              value={money(
+                classRows.reduce(
+                  (sum, item) => sum + item.transport,
+                  0
+                )
+              )}
+              icon="🚌"
+            />
+            <Stat
+              label="Transport Routes"
+              value={routes.filter((item) => item.active !== false).length}
+              icon="🗺️"
+            />
           </div>
 
-        )}
+          <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-sm">
+            <div className="grid gap-2 sm:grid-cols-3">
+              {[
+                ["academic", "🎓 Academic Fees", "Class-wise fee setup"],
+                ["transport", "🚌 Transportation", "Routes and charges"],
+                ["advanced", "⚙️ Advanced", "System controls"],
+              ].map(([id, title, description]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  className={`rounded-2xl p-4 text-left transition ${
+                    activeTab === id
+                      ? "bg-slate-950 text-white shadow-lg"
+                      : "bg-slate-50 text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  <p className="text-sm font-black">{title}</p>
+                  <p
+                    className={`mt-1 text-[10px] ${
+                      activeTab === id
+                        ? "text-slate-300"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    {description}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
 
+          {activeTab === "academic" && (
+            <section className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-black">
+                      Class Fee Setup
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Select a class and configure every component.
+                    </p>
+                  </div>
 
-        {/* =================================================
-            SAVE BAR
-        ================================================= */}
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search class…"
+                    className="w-36 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500 sm:w-48"
+                  />
+                </div>
 
-        <section className="sticky bottom-4 z-30 mt-8">
+                <div className="mt-5 space-y-2">
+                  {classRows.length ? (
+                    classRows.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedClass(item.id)}
+                        className={`w-full rounded-2xl border p-4 text-left transition ${
+                          selectedClassRow?.id === item.id
+                            ? "border-blue-300 bg-blue-50"
+                            : "border-slate-200 hover:border-blue-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-black text-slate-900">
+                              {item.name}
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-400">
+                              Academic {money(item.academicTotal)}
+                              {" • "}
+                              Transport {money(item.transport)}
+                            </p>
+                          </div>
 
-          <div className="bg-slate-950 text-white rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[8px] font-black ${
+                              item.transport > 0
+                                ? "bg-emerald-50 text-emerald-600"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {item.transport > 0
+                              ? "TRANSPORT SET"
+                              : "NO TRANSPORT"}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl bg-slate-50 p-8 text-center text-xs font-semibold text-slate-500">
+                      No classes found. Add classes first from the academic
+                      class management module.
+                    </div>
+                  )}
+                </div>
+              </div>
 
-            <div className="flex items-start gap-3">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                {selectedClassRow ? (
+                  <>
+                    <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-blue-600">
+                          Selected Class
+                        </p>
+                        <h2 className="mt-1 text-2xl font-black">
+                          {selectedClassRow.name}
+                        </h2>
+                      </div>
 
-              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                      <div className="rounded-2xl bg-slate-950 px-5 py-3 text-white">
+                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+                          Grand Annual Structure
+                        </p>
+                        <p className="mt-1 text-xl font-black">
+                          {money(grandTotal)}
+                        </p>
+                      </div>
+                    </div>
 
-                <Settings2
-                  size={19}
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                      <MoneyInput
+                        label="Tuition / Academic Fee"
+                        value={form.tuitionFee}
+                        onChange={(value) =>
+                          setForm((p) => ({
+                            ...p,
+                            tuitionFee: value,
+                          }))
+                        }
+                      />
+
+                      <MoneyInput
+                        label="Examination Fee"
+                        value={form.examFee}
+                        onChange={(value) =>
+                          setForm((p) => ({
+                            ...p,
+                            examFee: value,
+                          }))
+                        }
+                      />
+
+                      <MoneyInput
+                        label="Other / Miscellaneous Fee"
+                        value={form.otherFee}
+                        onChange={(value) =>
+                          setForm((p) => ({
+                            ...p,
+                            otherFee: value,
+                          }))
+                        }
+                      />
+
+                      <MoneyInput
+                        label="🚌 Transportation Charge"
+                        value={form.transportFee}
+                        onChange={(value) =>
+                          setForm((p) => ({
+                            ...p,
+                            transportFee: value,
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <Data
+                        label="Academic Total"
+                        value={money(academicTotal)}
+                      />
+                      <Data
+                        label="Transport"
+                        value={money(form.transportFee)}
+                      />
+                      <Data
+                        label="Grand Total"
+                        value={money(grandTotal)}
+                        strong
+                      />
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                      <p className="text-xs font-black text-blue-900">
+                        🚌 Transportation rule
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-blue-800">
+                        The transportation charge is stored separately from
+                        academic fees. A student with an explicit transport
+                        charge uses that value; otherwise the class transport
+                        structure can be used when transportation is enabled.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={saveClassFees}
+                      className="mt-6 w-full rounded-2xl bg-slate-950 px-5 py-4 text-sm font-black text-white shadow-lg transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {saving
+                        ? "Saving Fee Structure…"
+                        : "Save Class Fee Structure"}
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex min-h-80 items-center justify-center text-sm font-semibold text-slate-500">
+                    Select a class to configure fees.
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {activeTab === "transport" && (
+            <section className="grid gap-6 lg:grid-cols-[.85fr_1.15fr]">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-widest text-cyan-600">
+                  Transportation Setup
+                </p>
+                <h2 className="mt-1 text-2xl font-black">
+                  Add / Manage Route
+                </h2>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Route configuration stays inside Fee Settings. Use the
+                  class fee setup above to assign the default transportation
+                  charge.
+                </p>
+
+                <div className="mt-6 space-y-4">
+                  <Field
+                    label="Route Name"
+                    value={routeForm.name}
+                    placeholder="e.g. Route 01 - City"
+                    onChange={(value) =>
+                      setRouteForm((p) => ({
+                        ...p,
+                        name: value,
+                      }))
+                    }
+                  />
+
+                  <Field
+                    label="Route Code"
+                    value={routeForm.code}
+                    placeholder="e.g. R01"
+                    onChange={(value) =>
+                      setRouteForm((p) => ({
+                        ...p,
+                        code: value,
+                      }))
+                    }
+                  />
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <MoneyInput
+                      label="Annual Route Fee"
+                      value={routeForm.fee}
+                      onChange={(value) =>
+                        setRouteForm((p) => ({
+                          ...p,
+                          fee: value,
+                        }))
+                      }
+                    />
+
+                    <MoneyInput
+                      label="Monthly Route Fee"
+                      value={routeForm.monthlyFee}
+                      onChange={(value) =>
+                        setRouteForm((p) => ({
+                          ...p,
+                          monthlyFee: value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <Field
+                    label="Stops"
+                    value={routeForm.stops}
+                    placeholder="Stop A, Stop B, Stop C"
+                    onChange={(value) =>
+                      setRouteForm((p) => ({
+                        ...p,
+                        stops: value,
+                      }))
+                    }
+                  />
+
+                  <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <input
+                      type="checkbox"
+                      checked={routeForm.active !== false}
+                      onChange={(e) =>
+                        setRouteForm((p) => ({
+                          ...p,
+                          active: e.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    <span>
+                      <span className="block text-xs font-black">
+                        Route Active
+                      </span>
+                      <span className="block text-[10px] text-slate-500">
+                        Active routes can be used by the school transport
+                        setup.
+                      </span>
+                    </span>
+                  </label>
+
+                  <button
+                    type="button"
+                    disabled={savingRoute}
+                    onClick={saveRoute}
+                    className="w-full rounded-2xl bg-cyan-700 px-5 py-4 text-sm font-black text-white shadow-lg hover:bg-cyan-800 disabled:opacity-60"
+                  >
+                    {savingRoute
+                      ? "Saving Route…"
+                      : "Save Transportation Route"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-indigo-100 bg-indigo-50 p-6 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600">
+                  Student Route Mapping
+                </p>
+                <h2 className="mt-1 text-xl font-black text-slate-900">
+                  Map Student → Transportation Route
+                </h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Select a student and assign an active route. The route fee is
+                  copied to the student's transport charge so Fee Management,
+                  receipts and the student portal use the same amount.
+                </p>
+
+                <div className="mt-5 grid gap-4">
+                  <input
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    placeholder="Search student / enrollment / class…"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold outline-none focus:border-indigo-500"
+                  />
+
+                  <select
+                    value={selectedStudentId}
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-indigo-500"
+                  >
+                    <option value="">Select student</option>
+                    {filteredTransportStudents.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.name || "Unnamed"} •{" "}
+                        {student.enrollmentNo || student.id} •{" "}
+                        {student.className || student.class || "Class"}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={selectedRouteId}
+                    onChange={(e) => setSelectedRouteId(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-indigo-500"
+                  >
+                    <option value="">Select active route</option>
+                    {routes
+                      .filter((route) => route.active !== false)
+                      .map((route) => (
+                        <option key={route.id} value={route.id}>
+                          {route.name} • {money(route.fee)}
+                        </option>
+                      ))}
+                  </select>
+
+                  {selectedTransportStudent && (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Data
+                        label="Student"
+                        value={
+                          selectedTransportStudent.name || "Unnamed"
+                        }
+                      />
+                      <Data
+                        label="Current Route"
+                        value={
+                          selectedTransportStudent.transportRouteName ||
+                          "Not mapped"
+                        }
+                      />
+                      <Data
+                        label="Current Charge"
+                        value={money(
+                          selectedTransportStudent.transportFee ||
+                            selectedTransportStudent.transportCharge ||
+                            0
+                        )}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={saveStudentTransportMapping}
+                      className="flex-1 rounded-2xl bg-indigo-700 px-5 py-3.5 text-sm font-black text-white hover:bg-indigo-800"
+                    >
+                      🚌 Save Student Route Mapping
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={clearStudentTransportMapping}
+                      disabled={!selectedTransportStudent}
+                      className="rounded-2xl border border-red-200 bg-white px-5 py-3.5 text-sm font-black text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Remove Mapping
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600">Advanced Location Mapping</p>
+                    <h2 className="mt-1 text-2xl font-black">🗺️ Ayodhya Route Map</h2>
+                    <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Search villages/localities, detect the current location, click the map to create pickup stops, and save the complete route. Ayodhya has 11 blocks and 1,272 villages according to the district administration, so the map is designed for village-level route building rather than a fixed hand-written list. citeturn0search2turn0search9</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-950 px-4 py-3 text-white">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Selected Route</p>
+                    <p className="mt-1 text-sm font-black">{mapRouteDraft.name || "New Route"}</p>
+                  </div>
+                </div>
+
+                <AdvancedTransportMap
+                  route={mapRouteDraft}
+                  onRouteChange={(next) => {
+                    setMapRouteDraft(next);
+                    setRouteForm((previous) => ({
+                      ...previous,
+                      name: next.name || previous.name,
+                      code: next.code || previous.code,
+                      fee: numberValue(next.fee),
+                      monthlyFee: numberValue(next.monthlyFee),
+                    }));
+                  }}
                 />
 
+                <button
+                  type="button"
+                  disabled={savingRoute}
+                  onClick={saveRoute}
+                  className="mt-5 w-full rounded-2xl bg-indigo-700 px-5 py-4 text-sm font-black text-white shadow-lg hover:bg-indigo-800 disabled:opacity-60"
+                >
+                  {savingRoute ? "Saving Mapped Route…" : "💾 Save Complete Map Route"}
+                </button>
               </div>
 
-              <div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-cyan-600">
+                      Live Routes
+                    </p>
+                    <h2 className="mt-1 text-xl font-black">
+                      Transportation Routes
+                    </h2>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[9px] font-black text-emerald-600">
+                    ● REALTIME
+                  </span>
+                </div>
 
-                <p className="font-black">
+                <div className="mt-5 space-y-3">
+                  {routes.length ? (
+                    routes.map((route) => (
+                      <article
+                        key={route.id}
+                        className="rounded-2xl border border-slate-200 p-4"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-sm font-black">
+                                🚌 {route.name}
+                              </h3>
+                              <span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-500">
+                                {route.code || "ROUTE"}
+                              </span>
+                              <span
+                                className={`rounded-full px-2 py-1 text-[8px] font-black ${
+                                  route.active === false
+                                    ? "bg-red-50 text-red-600"
+                                    : "bg-emerald-50 text-emerald-600"
+                                }`}
+                              >
+                                {route.active === false
+                                  ? "INACTIVE"
+                                  : "ACTIVE"}
+                              </span>
+                            </div>
 
-                  Fee structure ready
+                            <p className="mt-2 text-xs text-slate-500">
+                              {Array.isArray(route.stops)
+                                ? route.stops.join(" → ")
+                                : String(route.stops || "No stops")}
+                            </p>
 
-                </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Data
+                                label="Annual"
+                                value={money(route.fee)}
+                              />
+                              <Data
+                                label="Monthly"
+                                value={money(route.monthlyFee)}
+                              />
+                            </div>
+                          </div>
 
-                <p className="text-xs text-slate-400 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedRouteId(route.id);
+                              setMapRouteDraft({ ...route, stops: Array.isArray(route.stops) ? route.stops : [] });
+                            }}
+                            className="rounded-xl border border-indigo-200 px-3 py-2 text-[10px] font-black text-indigo-700 hover:bg-indigo-50"
+                          >
+                            Map / Edit
+                          </button>
 
-                  {configuredCount} of{" "}
-                  {classes.length} classes configured
+                          <button
+                            type="button"
+                            onClick={() => removeRoute(route.id)}
+                            className="rounded-xl border border-red-200 px-3 py-2 text-[10px] font-black text-red-600 hover:bg-red-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl bg-slate-50 p-10 text-center">
+                      <p className="text-3xl">🚌</p>
+                      <p className="mt-2 text-sm font-black">
+                        No transport routes configured
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Add your first route from the panel on the left.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
-                </p>
+          {activeTab === "advanced" && (
+            <section className="grid gap-5 lg:grid-cols-2">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-xl font-black">
+                  Calculation Policy
+                </h2>
 
+                <div className="mt-5 space-y-3">
+                  {[
+                    [
+                      "Academic Fee",
+                      "Tuition + Examination + Other",
+                    ],
+                    [
+                      "Transportation",
+                      "Separate from academic fee",
+                    ],
+                    [
+                      "Grand Total",
+                      "Academic + Transportation",
+                    ],
+                    [
+                      "Due",
+                      "Configured fee − recorded payments",
+                    ],
+                  ].map(([title, value]) => (
+                    <div
+                      key={title}
+                      className="rounded-2xl bg-slate-50 p-4"
+                    >
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        {title}
+                      </p>
+                      <p className="mt-1 text-sm font-black text-slate-800">
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-            </div>
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-6">
+                <h2 className="text-xl font-black text-emerald-950">
+                  🔄 Realtime Sync
+                </h2>
 
+                <p className="mt-3 text-sm leading-6 text-emerald-800">
+                  Fee structure changes are written to the central
+                  <b> feeStructures </b>
+                  collection and the compatibility
+                  <b> settings/feeSettings </b>
+                  document. Connected dashboards listen to these values
+                  and can recalculate their fee cards automatically.
+                </p>
 
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-black hover:from-green-400 hover:to-emerald-400 disabled:opacity-60"
-            >
+                <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/70 p-4">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                    Schema
+                  </p>
+                  <p className="mt-1 text-sm font-black text-emerald-950">
+                    Version 3 • Academic + Transport
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
 
-              {saving ? (
-
-                <>
-                  <RefreshCw
-                    size={18}
-                    className="animate-spin"
-                  />
-
-                  Saving...
-
-                </>
-
-              ) : (
-
-                <>
-                  <Save
-                    size={18}
-                  />
-
-                  Save Fee Structure
-
-                </>
-
-              )}
-
-            </button>
-
-          </div>
-
-        </section>
-
-
-        {/* =================================================
-            INFORMATION
-        ================================================= */}
-
-        <section className="grid lg:grid-cols-2 gap-5 mt-8">
-
-          <div className="bg-blue-50 border border-blue-100 rounded-3xl p-6">
-
-            <h3 className="font-black text-blue-800">
-
-              How it works
-
-            </h3>
-
-            <ul className="mt-4 space-y-2 text-sm text-blue-900">
-
-              <li>
-                ✓ Classes come directly from Academic Configuration.
-              </li>
-
-              <li>
-                ✓ LKG, UKG, Nursery and custom classes are supported.
-              </li>
-
-              <li>
-                ✓ Fee is stored in Firebase.
-              </li>
-
-              <li>
-                ✓ Student admission can use the configured fee automatically.
-              </li>
-
-            </ul>
-
-          </div>
-
-
-          <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6">
-
-            <h3 className="font-black text-emerald-800">
-
-              Live Connection
-
-            </h3>
-
-            <p className="text-sm text-emerald-900 mt-3">
-
-              Fee settings are stored in:
-
+          <footer className="pb-8 text-center">
+            <p className="text-[10px] font-bold text-slate-400">
+              XYZ PUBLIC SCHOOL • Finance Control Center
             </p>
-
-            <code className="block mt-2 bg-white rounded-xl px-4 py-3 text-sm font-bold">
-
-              settings / feeSettings
-
-            </code>
-
-          </div>
-
-        </section>
-
-      </div>
-
-    </AdminLayout>
-
-  );
-
-}
-
-
-/* =========================================================
-   SUMMARY CARD
-========================================================= */
-
-function SummaryCard({
-  icon,
-  title,
-  value,
-  text,
-}) {
-
-  return (
-
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-
-      <div className="flex items-center justify-between">
-
-        <div className="w-10 h-10 rounded-xl bg-green-50 text-green-700 flex items-center justify-center">
-
-          {icon}
-
+          </footer>
         </div>
-
-        <p className="text-xl font-black text-slate-900">
-
-          {value}
-
-        </p>
-
       </div>
-
-      <p className="font-bold mt-4">
-
-        {title}
-
-      </p>
-
-      <p className="text-xs text-slate-500 mt-1">
-
-        {text}
-
-      </p>
-
-    </div>
-
+    </AdminLayout>
   );
-
 }
 
+function Stat({ label, value, icon }) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-2xl">{icon}</span>
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black uppercase text-slate-500">
+          Live
+        </span>
+      </div>
+      <p className="mt-4 text-[9px] font-black uppercase tracking-widest text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 text-xl font-black text-slate-900">
+        {value}
+      </p>
+    </div>
+  );
+}
 
-export default FeeSettings;
+function Data({ label, value, strong = false }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+      <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+        {label}
+      </p>
+      <p
+        className={`mt-1 ${
+          strong
+            ? "text-sm font-black text-blue-700"
+            : "text-xs font-bold text-slate-700"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function MoneyInput({ label, value, onChange }) {
+  return (
+    <label className="block">
+      <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+        {label}
+      </span>
+      <div className="mt-2 flex overflow-hidden rounded-2xl border border-slate-200 bg-white focus-within:border-blue-500">
+        <span className="flex items-center px-4 text-sm font-black text-slate-400">
+          ₹
+        </span>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          value={value}
+          onChange={(e) =>
+            onChange(
+              e.target.value === ""
+                ? 0
+                : Math.max(0, Number(e.target.value))
+            )
+          }
+          className="w-full bg-transparent px-2 py-3 text-sm font-black outline-none"
+        />
+      </div>
+    </label>
+  );
+}
+
+function Field({ label, value, placeholder, onChange }) {
+  return (
+    <label className="block">
+      <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+        {label}
+      </span>
+      <input
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-blue-500"
+      />
+    </label>
+  );
+}

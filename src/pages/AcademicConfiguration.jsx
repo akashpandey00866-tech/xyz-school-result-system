@@ -2567,6 +2567,8 @@ function AcademicConfiguration() {
                 sessionAssessments.length,
               configured:
                 distributedClasses,
+              totalClasses:
+                sessionClasses.length,
             }}
             goTo={
               setActiveTab
@@ -2836,6 +2838,9 @@ function AcademicConfiguration() {
             selectedSubjects={
               selectedSubjects
             }
+            setSelectedSubjects={
+              setSelectedSubjects
+            }
             toggleSubject={
               toggleSubject
             }
@@ -2853,6 +2858,13 @@ function AcademicConfiguration() {
             }
             current={
               currentDistribution
+            }
+            distributions={
+              distributions.filter(
+                (item) =>
+                  item.sessionId ===
+                  selectedSession?.id
+              )
             }
             sessions={
               sessions
@@ -2923,76 +2935,116 @@ function Overview({
     [
       "sessions",
       "Academic Session",
+      "Create or activate the academic year.",
       true,
+      "📅",
     ],
     [
       "classes",
       "Classes & Sections",
+      "Create classes and their sections.",
       stats.classes > 0,
+      "🏫",
     ],
     [
       "subjects",
       "Subjects",
+      "Create the subjects available in this session.",
       stats.subjects > 0,
+      "📚",
     ],
     [
       "assessments",
       "Examinations",
+      "Create the exams used by the result workflow.",
       stats.exams > 0,
+      "📝",
     ],
     [
       "distribution",
       "Class Academic Setup",
-      stats.configured > 0,
+      "Assign the right subjects to every class.",
+      stats.totalClasses > 0 &&
+        stats.configured >= stats.totalClasses,
+      "⚡",
     ],
   ];
+
+  const nextStep =
+    steps.find((step) => !step[3]);
 
   return (
     <div className="mt-6 space-y-6">
 
-      <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+      {/* ====================================================
+          GUIDED SETUP HEADER
+      ==================================================== */}
 
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+      <section className="relative overflow-hidden bg-gradient-to-br from-green-950 via-green-800 to-emerald-700 text-white rounded-3xl p-6 md:p-8 shadow-xl">
 
-          <div>
+        <div className="absolute -right-16 -top-16 w-52 h-52 rounded-full bg-white/5" />
+        <div className="absolute -left-20 -bottom-24 w-64 h-64 rounded-full bg-emerald-400/10" />
 
-            <p className="text-xs font-black uppercase tracking-wider text-green-700">
-              Current Academic Session
+        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-7">
+
+          <div className="max-w-3xl">
+
+            <p className="text-green-200 text-xs font-black uppercase tracking-[0.2em]">
+              Simple Setup Wizard
             </p>
 
-            <h2 className="text-3xl font-black mt-2">
-              {session?.name ||
-                "No Session Selected"}
+            <h2 className="text-3xl md:text-4xl font-black mt-2">
+              Build your academic structure step by step
             </h2>
 
-            <p className="text-slate-500 mt-2">
-              {session
-                ? `${formatDate(
-                    session.startDate
-                  )} → ${formatDate(
-                    session.endDate
-                  )}`
-                : "Create a session to start academic configuration."}
+            <p className="text-green-100/80 mt-3 leading-6">
+              Follow the sequence below. Every item is connected to the
+              selected academic session, so you do not need to configure
+              the same information repeatedly.
             </p>
+
+            {session && (
+              <div className="flex flex-wrap gap-2 mt-5">
+
+                <span className="px-3 py-2 rounded-xl bg-white/10 border border-white/10 text-sm font-black">
+                  📅 {session.name}
+                </span>
+
+                {session.active && (
+                  <span className="px-3 py-2 rounded-xl bg-emerald-400/20 border border-emerald-300/20 text-sm font-black">
+                    ✓ Active Session
+                  </span>
+                )}
+
+              </div>
+            )}
 
           </div>
 
-          <div className="min-w-[180px]">
+          <div className="w-full lg:w-64 bg-white/10 border border-white/10 rounded-2xl p-5 backdrop-blur-sm">
 
-            <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
-              <span>
-                Setup Progress
+            <div className="flex items-end justify-between">
+
+              <div>
+                <p className="text-xs text-green-200 font-bold">
+                  Overall setup
+                </p>
+
+                <p className="text-4xl font-black mt-1">
+                  {progress}%
+                </p>
+              </div>
+
+              <span className="text-3xl">
+                {progress === 100 ? "🎉" : "🚀"}
               </span>
 
-              <span>
-                {progress}%
-              </span>
             </div>
 
-            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-2.5 bg-black/20 rounded-full overflow-hidden mt-4">
 
               <div
-                className="h-full bg-gradient-to-r from-green-600 to-emerald-500 rounded-full"
+                className="h-full bg-white rounded-full transition-all duration-500"
                 style={{
                   width: `${progress}%`,
                 }}
@@ -3006,92 +3058,215 @@ function Overview({
 
       </section>
 
-      <section className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
+      {/* ====================================================
+          NEXT ACTION
+      ==================================================== */}
 
-        {steps.map(
-          ([
-            id,
-            title,
-            done,
-          ]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() =>
-                goTo(id)
-              }
-              className="text-left bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
-            >
+      {nextStep && (
+        <section className="bg-white border border-green-200 rounded-3xl p-5 md:p-6 shadow-sm">
 
-              <div
-                className={`w-11 h-11 rounded-full flex items-center justify-center font-black ${
-                  done
-                    ? "bg-green-600 text-white"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {done
-                  ? "✓"
-                  : "!"}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+
+            <div className="flex items-start gap-4">
+
+              <div className="w-12 h-12 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center text-2xl shrink-0">
+                {nextStep[4]}
               </div>
 
-              <h3 className="font-black mt-4">
-                {title}
-              </h3>
+              <div>
 
-              <p className="text-xs text-slate-500 mt-1">
-                {done
-                  ? "Configured"
-                  : "Needs setup"}
-              </p>
+                <p className="text-xs font-black uppercase tracking-wider text-green-700">
+                  Recommended next step
+                </p>
 
+                <h3 className="text-xl font-black mt-1">
+                  {nextStep[1]}
+                </h3>
+
+                <p className="text-sm text-slate-500 mt-1">
+                  {nextStep[2]}
+                </p>
+
+              </div>
+
+            </div>
+
+            <button
+              type="button"
+              onClick={() => goTo(nextStep[0])}
+              className="bg-green-700 hover:bg-green-800 text-white px-6 py-3 rounded-xl font-black shadow-sm"
+            >
+              Continue →
             </button>
-          )
-        )}
+
+          </div>
+
+        </section>
+      )}
+
+      {/* ====================================================
+          SETUP STEPS
+      ==================================================== */}
+
+      <section>
+
+        <div className="flex items-end justify-between gap-4 mb-4">
+
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider text-slate-400">
+              Setup sequence
+            </p>
+
+            <h3 className="text-2xl font-black mt-1">
+              Configure in this order
+            </h3>
+
+          </div>
+
+          <p className="hidden md:block text-sm text-slate-500">
+            Green = ready • Gray = needs setup
+          </p>
+
+        </div>
+
+        <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
+
+          {steps.map(
+            ([
+              id,
+              title,
+              description,
+              done,
+              icon,
+            ], index) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => goTo(id)}
+                className={`relative text-left rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition ${
+                  done
+                    ? "bg-white border-green-200"
+                    : "bg-slate-50 border-slate-200"
+                }`}
+              >
+
+                {index < steps.length - 1 && (
+                  <span className="hidden xl:block absolute top-10 -right-3 z-10 text-slate-300 text-xl">
+                    →
+                  </span>
+                )}
+
+                <div className="flex items-center justify-between">
+
+                  <div
+                    className={`w-11 h-11 rounded-full flex items-center justify-center text-xl ${
+                      done
+                        ? "bg-green-600 text-white"
+                        : "bg-white text-slate-500 border border-slate-200"
+                    }`}
+                  >
+                    {done ? "✓" : icon}
+                  </div>
+
+                  <span className="text-xs font-black text-slate-400">
+                    STEP {index + 1}
+                  </span>
+
+                </div>
+
+                <h4 className="font-black mt-4">
+                  {title}
+                </h4>
+
+                <p className="text-xs text-slate-500 mt-1 leading-5">
+                  {description}
+                </p>
+
+                <div className="mt-4">
+
+                  <Badge
+                    text={done ? "Ready" : "Needs setup"}
+                    green={done}
+                  />
+
+                </div>
+
+              </button>
+            )
+          )}
+
+        </div>
 
       </section>
+
+      {/* ====================================================
+          LIVE SUMMARY
+      ==================================================== */}
 
       <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
 
         <Stat
           title="Classes"
-          value={
-            stats.classes
-          }
+          value={stats.classes}
           icon="🏫"
         />
 
         <Stat
           title="Sections"
-          value={
-            stats.sections
-          }
+          value={stats.sections}
           icon="👥"
         />
 
         <Stat
           title="Subjects"
-          value={
-            stats.subjects
-          }
+          value={stats.subjects}
           icon="📚"
         />
 
         <Stat
           title="Exams"
-          value={
-            stats.exams
-          }
+          value={stats.exams}
           icon="📝"
         />
 
         <Stat
           title="Configured"
           value={
-            stats.configured
+            `${stats.configured}/${stats.totalClasses || 0}`
           }
           icon="⚡"
         />
+
+      </section>
+
+      {/* ====================================================
+          HELP CARD
+      ==================================================== */}
+
+      <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+
+        <div className="flex items-start gap-4">
+
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-xl shrink-0">
+            💡
+          </div>
+
+          <div>
+
+            <h3 className="font-black text-lg">
+              How the setup connects
+            </h3>
+
+            <p className="text-sm text-slate-500 mt-1 leading-6">
+              First create the session, then classes and subjects. After that
+              create examinations and finally assign subjects class-wise.
+              Teachers, attendance and result workflows can then use these
+              dynamic assignments instead of hard-coded classes or subjects.
+            </p>
+
+          </div>
+
+        </div>
 
       </section>
 
@@ -3104,6 +3279,7 @@ function Overview({
 SESSION MANAGER
 ============================================================
 */
+
 
 function SessionManager({
   sessions,
@@ -4453,12 +4629,14 @@ function DistributionManager({
   selectedClassId,
   setSelectedClassId,
   selectedSubjects,
+  setSelectedSubjects,
   toggleSubject,
   selectAll,
   clearAll,
   save,
   saving,
   current,
+  distributions,
   sessions,
   cloneSourceId,
   setCloneSourceId,
@@ -4466,126 +4644,362 @@ function DistributionManager({
   setCloneTargetName,
   cloneSetup,
 }) {
+  const [subjectSearch, setSubjectSearch] = useState("");
+
   const selectedClass =
     classes.find(
       (item) =>
-        item.id ===
-        selectedClassId
+        item.id === selectedClassId
+    ) || null;
+
+  const filteredSubjects = useMemo(() => {
+    const query = normalize(subjectSearch);
+
+    if (!query) return subjects;
+
+    return subjects.filter(
+      (subject) =>
+        normalize(subject.name).includes(query) ||
+        normalize(subject.code).includes(query) ||
+        normalize(subject.type).includes(query)
     );
+  }, [subjects, subjectSearch]);
+
+  const selectedSubjectRecords = subjects.filter(
+    (subject) =>
+      selectedSubjects.includes(subject.id)
+  );
+
+  const allVisibleSelected =
+    filteredSubjects.length > 0 &&
+    filteredSubjects.every((subject) =>
+      selectedSubjects.includes(subject.id)
+    );
+
+  const classSetupStatus = classes.map((item) => {
+    const mapping =
+      distributions.find(
+        (distribution) =>
+          distribution.classId === item.id
+      ) || null;
+
+    const count = Array.isArray(mapping?.subjectIds)
+      ? mapping.subjectIds.length
+      : 0;
+
+    return {
+      ...item,
+      mapping,
+      subjectCount: count,
+    };
+  });
+
+  const configuredClassCount =
+    classSetupStatus.filter(
+      (item) => item.subjectCount > 0
+    ).length;
 
   return (
     <div className="mt-6 space-y-6">
 
-      <section className="bg-gradient-to-r from-purple-900 via-indigo-800 to-blue-800 text-white rounded-3xl p-6 shadow-xl">
+      {/* ====================================================
+          SETUP HEADER
+      ==================================================== */}
 
-        <p className="text-purple-200 text-xs font-black uppercase tracking-wider">
-          Dynamic Class Setup
-        </p>
+      <section className="relative overflow-hidden bg-gradient-to-r from-purple-950 via-indigo-900 to-blue-800 text-white rounded-3xl p-6 md:p-8 shadow-xl">
 
-        <h2 className="text-3xl font-black mt-2">
-          Class-wise Academic Distribution
-        </h2>
+        <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-white/5" />
 
-        <p className="text-purple-100/80 mt-2 max-w-3xl">
-          Decide which subjects belong to each class.
-          Add Result can later use this mapping automatically.
-        </p>
+        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+
+          <div className="max-w-3xl">
+
+            <p className="text-purple-200 text-xs font-black uppercase tracking-[0.2em]">
+              Step 5 • Final Academic Mapping
+            </p>
+
+            <h2 className="text-3xl md:text-4xl font-black mt-2">
+              Assign Subjects to Classes
+            </h2>
+
+            <p className="text-purple-100/80 mt-3 leading-6">
+              Select a class, choose the subjects taught in that class,
+              review the selection and save. This mapping becomes the
+              source for the teacher, attendance and result workflows.
+            </p>
+
+          </div>
+
+          <div className="bg-white/10 border border-white/10 rounded-2xl p-5 min-w-[210px]">
+
+            <p className="text-xs text-purple-200 font-bold">
+              Current Session
+            </p>
+
+            <p className="text-2xl font-black mt-1">
+              {session?.name || "Not selected"}
+            </p>
+
+            {selectedClass && (
+              <p className="text-sm text-purple-100 mt-2">
+                Editing: <b>{selectedClass.name}</b>
+              </p>
+            )}
+
+          </div>
+
+        </div>
 
       </section>
 
-      <section className="bg-white border rounded-3xl p-6 shadow-sm">
+      {/* ====================================================
+          QUICK INSTRUCTIONS
+      ==================================================== */}
 
-        <label
-          htmlFor="distribution-class"
-          className="block text-sm font-black mb-2"
-        >
-          Select Class
-        </label>
+      <section className="grid md:grid-cols-3 gap-4">
 
-        <select
-          id="distribution-class"
-          value={
-            selectedClassId
-          }
-          onChange={(e) =>
-            setSelectedClassId(
-              e.target.value
-            )
-          }
-          className="w-full md:max-w-xl border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500"
-        >
+        {[
+          ["1", "Choose class", "Select the class whose subjects you want to configure."],
+          ["2", "Choose subjects", "Tick only the subjects actually taught to that class."],
+          ["3", "Save setup", "Save once. Existing mapping will be updated instead of duplicated."],
+        ].map(([number, title, text]) => (
+          <div
+            key={number}
+            className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"
+          >
 
-          <option value="">
-            Select class...
-          </option>
+            <div className="flex items-start gap-3">
 
-          {classes.map(
-            (item) => (
-              <option
-                key={
-                  item.id
-                }
-                value={
-                  item.id
-                }
-              >
-                {item.name}
-                {" • "}
-                {(
-                  item.sections ||
-                  []
-                ).join(
-                  ", "
-                )}
+              <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black shrink-0">
+                {number}
+              </div>
+
+              <div>
+                <h3 className="font-black">
+                  {title}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-5">
+                  {text}
+                </p>
+              </div>
+
+            </div>
+
+          </div>
+        ))}
+
+      </section>
+
+      {/* ====================================================
+          CLASS SELECTOR
+      ==================================================== */}
+
+      <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+
+        <div className="flex flex-col lg:flex-row lg:items-end gap-5">
+
+          <div className="flex-1">
+
+            <label
+              htmlFor="distribution-class"
+              className="block text-sm font-black text-slate-700 mb-2"
+            >
+              1. Select Class
+            </label>
+
+            <select
+              id="distribution-class"
+              value={selectedClassId}
+              onChange={(e) =>
+                setSelectedClassId(e.target.value)
+              }
+              className="w-full border border-slate-300 rounded-xl px-4 py-3 bg-white outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-100 font-bold"
+            >
+
+              <option value="">
+                Select class...
               </option>
-            )
-          )}
 
-        </select>
+              {classes.map((item) => (
+                <option
+                  key={item.id}
+                  value={item.id}
+                >
+                  {item.name}
+                  {" • "}
+                  {(item.sections || []).join(", ")}
+                </option>
+              ))}
+
+            </select>
+
+          </div>
+
+          <div className="lg:w-64">
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+
+              <p className="text-xs text-slate-500 font-bold">
+                Classes available
+              </p>
+
+              <p className="text-xl font-black mt-1">
+                {classSetupStatus.length}
+              </p>
+
+            </div>
+
+          </div>
+
+        </div>
 
       </section>
+
+      {/* ====================================================
+          ALL CLASS SETUP STATUS
+      ==================================================== */}
+
+      {classSetupStatus.length > 0 && (
+        <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+
+            <div>
+              <p className="text-xs text-purple-700 font-black uppercase tracking-wider">
+                Live Setup Status
+              </p>
+
+              <h3 className="text-xl font-black mt-1">
+                Class-wise subject assignment
+              </h3>
+
+              <p className="text-sm text-slate-500 mt-1">
+                Quickly see which classes are configured before opening one.
+              </p>
+            </div>
+
+            <div className="px-4 py-2 rounded-xl bg-purple-50 text-purple-700 text-sm font-black">
+              {configuredClassCount}/{classSetupStatus.length} configured
+            </div>
+
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-5">
+
+            {classSetupStatus.map((item) => {
+              const configured = item.subjectCount > 0;
+
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => setSelectedClassId(item.id)}
+                  className={`text-left rounded-2xl border p-4 transition ${
+                    selectedClassId === item.id
+                      ? "border-purple-500 bg-purple-50 ring-2 ring-purple-100"
+                      : configured
+                      ? "border-green-200 bg-green-50/50 hover:border-green-300"
+                      : "border-slate-200 hover:border-purple-200 hover:bg-slate-50"
+                  }`}
+                >
+
+                  <div className="flex items-start justify-between gap-3">
+
+                    <div>
+                      <p className="font-black">
+                        {item.name}
+                      </p>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        {(item.sections || []).join(", ") || "No sections"}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`text-xs px-2 py-1 rounded-lg font-black ${
+                        configured
+                          ? "bg-green-100 text-green-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {configured ? "Ready" : "Pending"}
+                    </span>
+
+                  </div>
+
+                  <p className="text-sm font-bold mt-4">
+                    {item.subjectCount}{" "}
+                    {item.subjectCount === 1 ? "subject" : "subjects"} assigned
+                  </p>
+
+                </button>
+              );
+            })}
+
+          </div>
+
+        </section>
+      )}
 
       {selectedClass && (
         <>
-          <section className="bg-white border rounded-3xl p-6 shadow-sm">
 
-            <div className="flex flex-col md:flex-row md:justify-between gap-4">
+          {/* ==================================================
+              SELECTED CLASS SUMMARY
+          ================================================== */}
+
+          <section className="bg-white border border-purple-200 rounded-3xl p-6 shadow-sm">
+
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
 
               <div>
 
-                <p className="text-xs text-purple-700 font-black uppercase">
-                  Configuring
+                <p className="text-xs text-purple-700 font-black uppercase tracking-wider">
+                  2. Configuring Class
                 </p>
 
-                <h2 className="text-2xl font-black mt-1">
-                  {
-                    selectedClass.name
-                  }
+                <h2 className="text-3xl font-black mt-1">
+                  {selectedClass.name}
                 </h2>
 
-                <p className="text-sm text-slate-500 mt-1">
-                  Sections:{" "}
-                  {(
-                    selectedClass.sections ||
-                    []
-                  ).join(
-                    ", "
-                  )}
-                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+
+                  <Badge
+                    text={`Sections ${(selectedClass.sections || []).join(", ") || "—"}`}
+                  />
+
+                  <Badge
+                    text={`Capacity ${selectedClass.capacity || 0}`}
+                  />
+
+                  <Badge
+                    text={`${selectedSubjects.length} subjects assigned`}
+                    green={selectedSubjects.length > 0}
+                  />
+
+                </div>
 
               </div>
 
-              <div className="text-right">
+              <div className="grid grid-cols-2 gap-3 min-w-[260px]">
 
-                <p className="text-sm text-slate-500">
-                  Assigned Subjects
-                </p>
+                <div className="bg-purple-50 rounded-2xl p-4">
+                  <p className="text-xs text-purple-600 font-bold">
+                    Available
+                  </p>
+                  <p className="text-2xl font-black text-purple-800 mt-1">
+                    {subjects.length}
+                  </p>
+                </div>
 
-                <p className="text-3xl font-black text-purple-700">
-                  {
-                    selectedSubjects.length
-                  }
-                </p>
+                <div className="bg-green-50 rounded-2xl p-4">
+                  <p className="text-xs text-green-600 font-bold">
+                    Selected
+                  </p>
+                  <p className="text-2xl font-black text-green-800 mt-1">
+                    {selectedSubjects.length}
+                  </p>
+                </div>
 
               </div>
 
@@ -4593,221 +5007,385 @@ function DistributionManager({
 
           </section>
 
-          <section className="bg-white border rounded-3xl p-6 shadow-sm">
+          {/* ==================================================
+              SUBJECT PICKER
+          ================================================== */}
 
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <section className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
 
               <div>
 
-                <h3 className="text-xl font-black">
-                  Subject Distribution
+                <p className="text-xs text-purple-700 font-black uppercase tracking-wider">
+                  3. Choose Subjects
+                </p>
+
+                <h3 className="text-2xl font-black mt-1">
+                  Subjects taught in {selectedClass.name}
                 </h3>
 
                 <p className="text-sm text-slate-500 mt-1">
-                  Select subjects taught in this class.
+                  Search by subject name, code or type and tick the subjects
+                  that belong to this class.
                 </p>
 
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2">
 
                 <button
                   type="button"
-                  onClick={
-                    selectAll
-                  }
-                  className="text-sm text-green-700 font-black"
+                  onClick={selectAll}
+                  className="px-4 py-2.5 rounded-xl bg-green-50 text-green-700 font-black text-sm hover:bg-green-100"
                 >
                   Select All
                 </button>
 
                 <button
                   type="button"
-                  onClick={
-                    clearAll
-                  }
-                  className="text-sm text-red-600 font-black"
+                  onClick={clearAll}
+                  className="px-4 py-2.5 rounded-xl bg-red-50 text-red-600 font-black text-sm hover:bg-red-100"
                 >
-                  Clear
+                  Clear All
                 </button>
 
               </div>
 
             </div>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-6">
+            <div className="mt-5">
 
-              {subjects.length ===
-              0 ? (
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <Empty
-                    title="No subjects available"
-                    text="Create subjects first."
-                  />
-                </div>
-              ) : (
-                subjects.map(
-                  (subject) => {
-                    const active =
-                      selectedSubjects.includes(
-                        subject.id
-                      );
+              <div className="relative">
 
-                    return (
-                      <button
-                        type="button"
-                        key={
-                          subject.id
-                        }
-                        onClick={() =>
-                          toggleSubject(
-                            subject.id
-                          )
-                        }
-                        className={`text-left border rounded-2xl p-4 transition ${
-                          active
-                            ? "border-purple-500 bg-purple-50 ring-2 ring-purple-100"
-                            : "border-slate-200 hover:bg-slate-50"
-                        }`}
-                      >
+                <input
+                  id="academic-subject-search"
+                  type="search"
+                  value={subjectSearch}
+                  onChange={(e) =>
+                    setSubjectSearch(e.target.value)
+                  }
+                  placeholder="Search subject name, code or type..."
+                  className="w-full border border-slate-300 rounded-xl pl-11 pr-4 py-3 outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-100"
+                />
 
-                        <div className="flex justify-between gap-3">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  🔎
+                </span>
 
-                          <div>
+              </div>
 
-                            <p className="font-black">
-                              {active
-                                ? "✓ "
-                                : ""}
-                              {
-                                subject.name
-                              }
-                            </p>
+            </div>
 
-                            <p className="text-xs text-slate-500 mt-1">
-                              {
-                                subject.code
-                              }
-                            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
 
-                          </div>
+              <p className="text-sm text-slate-500">
+                Showing <b>{filteredSubjects.length}</b> of{" "}
+                <b>{subjects.length}</b> subjects
+              </p>
 
-                          <span className="text-xs bg-slate-100 rounded-lg px-2 py-1 h-fit">
-                            {
-                              subject.type
-                            }
-                          </span>
+              <p className="text-sm font-black text-purple-700">
+                {selectedSubjects.length} selected
+              </p>
+
+            </div>
+
+            {filteredSubjects.length === 0 ? (
+              <div className="mt-5">
+                <Empty
+                  title="No matching subjects"
+                  text={
+                    subjects.length === 0
+                      ? "Create subjects first in the Subjects section."
+                      : "Try a different subject name, code or type."
+                  }
+                />
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-5">
+
+                {filteredSubjects.map((subject) => {
+                  const active =
+                    selectedSubjects.includes(subject.id);
+
+                  return (
+                    <button
+                      type="button"
+                      key={subject.id}
+                      onClick={() =>
+                        toggleSubject(subject.id)
+                      }
+                      aria-pressed={active}
+                      className={`text-left border rounded-2xl p-4 transition ${
+                        active
+                          ? "border-purple-500 bg-purple-50 ring-2 ring-purple-100"
+                          : "border-slate-200 hover:border-purple-200 hover:bg-slate-50"
+                      }`}
+                    >
+
+                      <div className="flex justify-between gap-3">
+
+                        <div className="min-w-0">
+
+                          <p className="font-black truncate">
+                            {active ? "✓ " : "○ "}
+                            {subject.name}
+                          </p>
+
+                          <p className="text-xs text-slate-500 mt-1">
+                            {subject.code || "No code"}
+                          </p>
 
                         </div>
 
-                        <div className="flex flex-wrap gap-2 mt-3">
+                        <span className="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 h-fit shrink-0">
+                          {subject.type || "Core"}
+                        </span>
 
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mt-3">
+
+                        <Badge
+                          text={`Total ${subject.maxMarks || 0}`}
+                        />
+
+                        {Number(subject.practicalMarks) > 0 && (
                           <Badge
-                            text={`Total ${
-                              subject.maxMarks ||
-                              0
-                            }`}
+                            text={`Practical ${subject.practicalMarks}`}
                           />
+                        )}
 
-                          {Number(
-                            subject.practicalMarks
-                          ) >
-                            0 && (
-                            <Badge
-                              text={`Practical ${subject.practicalMarks}`}
-                            />
-                          )}
+                      </div>
 
-                        </div>
+                    </button>
+                  );
+                })}
 
-                      </button>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3 mt-5 pt-5 border-t border-slate-100">
+
+              <button
+                type="button"
+                onClick={() => {
+                  const visibleIds =
+                    filteredSubjects.map(
+                      (subject) => subject.id
+                    );
+
+                  if (allVisibleSelected) {
+                    setSelectedSubjects(
+                      (previous) =>
+                        previous.filter(
+                          (id) =>
+                            !visibleIds.includes(id)
+                        )
+                    );
+                  } else {
+                    setSelectedSubjects(
+                      (previous) =>
+                        Array.from(
+                          new Set([
+                            ...previous,
+                            ...visibleIds,
+                          ])
+                        )
                     );
                   }
-                )
-              )}
+                }}
+                className="text-sm font-black text-purple-700"
+              >
+                {allVisibleSelected
+                  ? "Unselect visible"
+                  : "Select visible"}
+              </button>
+
+              <span className="text-xs text-slate-400">
+                Tip: search first, then select or unselect only the visible subjects.
+              </span>
 
             </div>
 
           </section>
 
-          <section className="bg-white border rounded-3xl p-5 shadow-sm">
+          {/* ==================================================
+              REVIEW
+          ================================================== */}
+
+          <section className="bg-white border border-green-200 rounded-3xl p-6 shadow-sm">
 
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
               <div>
 
-                <p className="font-black">
-                  Academic Setup
+                <p className="text-xs text-green-700 font-black uppercase tracking-wider">
+                  4. Review & Save
                 </p>
 
+                <h3 className="text-2xl font-black mt-1">
+                  {selectedClass.name} Academic Setup
+                </h3>
+
                 <p className="text-sm text-slate-500 mt-1">
-                  {
-                    selectedSubjects.length
-                  }{" "}
-                  subjects assigned to{" "}
-                  {
-                    selectedClass.name
-                  }.
+                  Review the selected subjects before saving.
                 </p>
 
               </div>
 
-              <button
-                type="button"
-                onClick={
-                  save
-                }
-                disabled={
-                  saving ||
-                  selectedSubjects.length ===
-                    0
-                }
-                className="bg-purple-700 text-white px-7 py-3 rounded-xl font-black disabled:bg-slate-400"
-              >
-                {saving
-                  ? "Saving..."
-                  : current
-                  ? "Update Setup"
-                  : "Save Setup"}
-              </button>
+              <div className="flex items-center gap-3">
+
+                <div className="text-right">
+
+                  <p className="text-xs text-slate-500">
+                    Selected
+                  </p>
+
+                  <p className="text-2xl font-black text-green-700">
+                    {selectedSubjects.length}
+                  </p>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={
+                    saving ||
+                    selectedSubjects.length === 0
+                  }
+                  className="bg-green-700 hover:bg-green-800 text-white px-7 py-3 rounded-xl font-black disabled:bg-slate-400 disabled:cursor-not-allowed shadow-sm"
+                >
+                  {saving
+                    ? "Saving..."
+                    : current
+                    ? "Update Academic Setup"
+                    : "Save Academic Setup"}
+                </button>
+
+              </div>
 
             </div>
+
+            {selectedSubjectRecords.length === 0 ? (
+              <div className="mt-5 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800 font-semibold">
+                Select at least one subject before saving this class.
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-5">
+
+                {selectedSubjectRecords.map((subject, index) => (
+                  <div
+                    key={subject.id}
+                    className="border border-green-100 bg-green-50/60 rounded-2xl p-4"
+                  >
+
+                    <div className="flex items-start justify-between gap-3">
+
+                      <div>
+
+                        <p className="text-xs text-green-700 font-black">
+                          SUBJECT {index + 1}
+                        </p>
+
+                        <p className="font-black mt-1">
+                          {subject.name}
+                        </p>
+
+                        <p className="text-xs text-slate-500 mt-1">
+                          {subject.code || "No code"} •{" "}
+                          {subject.type || "Core"}
+                        </p>
+
+                      </div>
+
+                      <button
+                        type="button"
+                        title={`Remove ${subject.name}`}
+                        onClick={() =>
+                          toggleSubject(subject.id)
+                        }
+                        className="w-8 h-8 rounded-lg bg-white text-red-600 border border-red-100 font-black"
+                      >
+                        ×
+                      </button>
+
+                    </div>
+
+                  </div>
+                ))}
+
+              </div>
+            )}
 
           </section>
         </>
       )}
 
       {/* ====================================================
+          EMPTY STATE
+      ==================================================== */}
+
+      {!selectedClass && (
+        <section className="bg-white border border-dashed border-purple-300 rounded-3xl p-10 text-center shadow-sm">
+
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-50 flex items-center justify-center text-3xl">
+            🏫
+          </div>
+
+          <h3 className="text-2xl font-black mt-4">
+            Start with a class
+          </h3>
+
+          <p className="text-slate-500 max-w-xl mx-auto mt-2">
+            Select a class above. Its sections and the available subjects
+            for the selected academic session will appear automatically.
+          </p>
+
+        </section>
+      )}
+
+      {/* ====================================================
           SESSION CLONE
       ==================================================== */}
 
-      <section className="bg-white border rounded-3xl p-6 shadow-sm">
+      <section className="bg-white border border-blue-200 rounded-3xl p-6 shadow-sm">
 
-        <p className="text-xs text-blue-700 font-black uppercase tracking-wider">
-          Smart Session Migration
-        </p>
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
 
-        <h2 className="text-2xl font-black mt-1">
-          Create Next Session from Existing Setup
-        </h2>
+          <div>
 
-        <p className="text-sm text-slate-500 mt-2 max-w-3xl">
-          Copy classes, subjects, examinations and
-          subject distribution into a new academic session.
-          The old session remains separate.
-        </p>
+            <p className="text-xs text-blue-700 font-black uppercase tracking-wider">
+              Optional • New Academic Year
+            </p>
+
+            <h2 className="text-2xl font-black mt-1">
+              Create Next Session from Existing Setup
+            </h2>
+
+            <p className="text-sm text-slate-500 mt-2 max-w-3xl leading-6">
+              Copy classes, subjects, examinations and class-wise subject
+              assignments into a new academic session. The source session
+              remains unchanged and the new session gets its own IDs.
+            </p>
+
+          </div>
+
+          <div className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-xs font-black">
+            Smart Migration
+          </div>
+
+        </div>
 
         <div className="grid md:grid-cols-3 gap-4 mt-6">
 
           <SelectField
             id="clone-source"
             label="Copy From"
-            value={
-              cloneSourceId
-            }
+            value={cloneSourceId}
             options={sessions.map(
-              (item) =>
-                item.id
+              (item) => item.id
             )}
             labels={Object.fromEntries(
               sessions.map(
@@ -4817,34 +5395,24 @@ function DistributionManager({
                 ]
               )
             )}
-            onChange={
-              setCloneSourceId
-            }
+            onChange={setCloneSourceId}
           />
 
           <Field
             id="clone-target"
             label="New Session Name"
             placeholder="2027-28"
-            value={
-              cloneTargetName
-            }
-            onChange={
-              setCloneTargetName
-            }
+            value={cloneTargetName}
+            onChange={setCloneTargetName}
           />
 
           <div className="flex items-end">
 
             <button
               type="button"
-              onClick={
-                cloneSetup
-              }
-              disabled={
-                saving
-              }
-              className="w-full bg-blue-700 text-white rounded-xl py-3 font-black disabled:bg-slate-400"
+              onClick={cloneSetup}
+              disabled={saving}
+              className="w-full bg-blue-700 hover:bg-blue-800 text-white rounded-xl py-3 font-black disabled:bg-slate-400"
             >
               {saving
                 ? "Creating..."
@@ -4866,6 +5434,7 @@ function DistributionManager({
 COMMON COMPONENTS
 ============================================================
 */
+
 
 function Field({
   id,

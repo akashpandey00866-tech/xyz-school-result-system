@@ -2,23 +2,35 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  Navigate,
 } from "react-router-dom";
 
 /* =========================================================
    PUBLIC
 ========================================================= */
 
-import Home from "../pages/Home";
-import StudentLogin from "../pages/StudentLogin";
-import StudentDashboard from "../pages/StudentDashboard";
-import AdminLogin from "../pages/AdminLogin";
+import SchoolHome from "../pages/SchoolHome";
+import Login from "../pages/Login";
 import NotFound from "../pages/NotFound";
+
+/* =========================================================
+   STUDENT
+========================================================= */
+
+import StudentDashboard from "../pages/StudentDashboard";
 
 /* =========================================================
    ADMIN
 ========================================================= */
 
 import AdminDashboard from "../pages/AdminDashboard";
+import TeacherManagement from "../pages/admin/TeacherManagement";
+
+/* =========================================================
+   TEACHER
+========================================================= */
+
+import TeacherDashboard from "../pages/TeacherDashboard";
 
 /* =========================================================
    STUDENTS
@@ -69,66 +81,181 @@ import FeeSettings from "../pages/FeeSettings";
 import Archive from "../pages/Archive";
 import Settings from "../pages/Settings";
 
-import ProtectedAdminRoute from "./ProtectedAdminRoute";
+/* =========================================================
+   SECURITY
+========================================================= */
 
+import ProtectedAdminRoute from "./ProtectedAdminRoute";
+import ProtectedStudentRoute from "./ProtectedStudentRoute";
+
+/*
+  IMPORTANT:
+  Teacher currently has no dedicated ProtectedTeacherRoute
+  in the existing project structure supplied to us, so the
+  existing Teacher routes are preserved unchanged here.
+
+  Once a ProtectedTeacherRoute is present, these two routes
+  can be wrapped without changing the rest of the app.
+*/
+
+/* =========================================================
+   APP ROUTES
+========================================================= */
 
 function AppRoutes() {
-
   return (
-
     <BrowserRouter>
 
       <Routes>
 
         {/* =================================================
-            PUBLIC
+            PUBLIC HOME
+            NEW SCHOOL FRONTEND
         ================================================= */}
 
         <Route
           path="/"
-          element={<Home />}
+          element={
+            <SchoolHome />
+          }
         />
+
+        {/* =================================================
+            CENTRAL LOGIN
+            ONLY LOGIN PAGE
+        ================================================= */}
+
+        <Route
+          path="/login"
+          element={
+            <Login />
+          }
+        />
+
+        {/* =================================================
+            LEGACY LOGIN URLS
+            Redirect to the new central login.
+            Old panels are no longer rendered.
+        ================================================= */}
 
         <Route
           path="/student-login"
-          element={<StudentLogin />}
+          element={
+            <Navigate
+              to="/login"
+              replace
+            />
+          }
         />
 
         <Route
           path="/student/login"
-          element={<StudentLogin />}
+          element={
+            <Navigate
+              to="/login"
+              replace
+            />
+          }
         />
 
         <Route
-          path="/student-dashboard"
-          element={<StudentDashboard />}
+          path="/studentLogin"
+          element={
+            <Navigate
+              to="/login"
+              replace
+            />
+          }
         />
 
         <Route
-          path="/student/dashboard"
-          element={<StudentDashboard />}
-        />
-
-        <Route
-          path="/student/result"
-          element={<StudentDashboard />}
-        />
-
-        <Route
-          path="/student/fees"
-          element={<StudentDashboard />}
+          path="/studentlogin"
+          element={
+            <Navigate
+              to="/login"
+              replace
+            />
+          }
         />
 
         <Route
           path="/admin-login"
-          element={<AdminLogin />}
+          element={
+            <Navigate
+              to="/login"
+              replace
+            />
+          }
         />
 
         <Route
           path="/admin/login"
-          element={<AdminLogin />}
+          element={
+            <Navigate
+              to="/login"
+              replace
+            />
+          }
         />
 
+        {/* =================================================
+            STUDENT DASHBOARD
+        ================================================= */}
+
+        <Route
+          path="/student-dashboard"
+          element={
+            <ProtectedStudentRoute>
+              <StudentDashboard />
+            </ProtectedStudentRoute>
+          }
+        />
+
+        <Route
+          path="/student/dashboard"
+          element={
+            <ProtectedStudentRoute>
+              <StudentDashboard />
+            </ProtectedStudentRoute>
+          }
+        />
+
+        <Route
+          path="/student/result"
+          element={
+            <ProtectedStudentRoute>
+              <StudentDashboard />
+            </ProtectedStudentRoute>
+          }
+        />
+
+        <Route
+          path="/student/fees"
+          element={
+            <ProtectedStudentRoute>
+              <StudentDashboard />
+            </ProtectedStudentRoute>
+          }
+        />
+
+        {/* =================================================
+            TEACHER DASHBOARD
+            Existing routes preserved
+        ================================================= */}
+
+        <Route
+          path="/teacher-dashboard"
+          element={
+            <TeacherDashboard />
+          }
+        />
+
+        <Route
+          path="/teacher/dashboard"
+          element={
+            <TeacherDashboard />
+          }
+        />
 
         {/* =================================================
             ADMIN DASHBOARD
@@ -152,9 +279,32 @@ function AppRoutes() {
           }
         />
 
+        {/* =================================================
+            TEACHER MANAGEMENT
+            ADMIN ONLY
+        ================================================= */}
+
+        <Route
+          path="/teacher-management"
+          element={
+            <ProtectedAdminRoute>
+              <TeacherManagement />
+            </ProtectedAdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/teachers"
+          element={
+            <ProtectedAdminRoute>
+              <TeacherManagement />
+            </ProtectedAdminRoute>
+          }
+        />
 
         {/* =================================================
             ACADEMIC
+            ADMIN ONLY
         ================================================= */}
 
         <Route
@@ -175,9 +325,9 @@ function AppRoutes() {
           }
         />
 
-
         {/* =================================================
             STUDENTS
+            ADMIN ONLY
         ================================================= */}
 
         <Route
@@ -234,9 +384,9 @@ function AppRoutes() {
           }
         />
 
-
         {/* =================================================
             RESULTS
+            ADMIN ONLY
         ================================================= */}
 
         <Route
@@ -284,9 +434,9 @@ function AppRoutes() {
           }
         />
 
-
         {/* =================================================
             EXCEL
+            ADMIN ONLY
         ================================================= */}
 
         <Route
@@ -307,9 +457,9 @@ function AppRoutes() {
           }
         />
 
-
         {/* =================================================
             FEES
+            ADMIN ONLY
         ================================================= */}
 
         <Route
@@ -348,8 +498,6 @@ function AppRoutes() {
           }
         />
 
-        {/* ⭐ DYNAMIC FEE SETTINGS */}
-
         <Route
           path="/fee-settings"
           element={
@@ -359,9 +507,9 @@ function AppRoutes() {
           }
         />
 
-
         {/* =================================================
             OTHER
+            ADMIN ONLY
         ================================================= */}
 
         <Route
@@ -382,22 +530,21 @@ function AppRoutes() {
           }
         />
 
-
         {/* =================================================
             404
         ================================================= */}
 
         <Route
           path="*"
-          element={<NotFound />}
+          element={
+            <NotFound />
+          }
         />
 
       </Routes>
 
     </BrowserRouter>
-
   );
-
 }
 
 export default AppRoutes;

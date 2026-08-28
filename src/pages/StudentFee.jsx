@@ -1,493 +1,812 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   collection,
   doc,
   getDocs,
+  limit,
   onSnapshot,
-  setDoc,
-  serverTimestamp,
+  query,
 } from "firebase/firestore";
+
+import { auth, db } from "../config/firebase";
+import StudentLayout from "../layouts/StudentLayout";
+
 import {
-  WalletCards,
-  Save,
-  RefreshCw,
-  IndianRupee,
-  GraduationCap,
-  CheckCircle2,
-  Search,
-  Sparkles,
-  Settings2,
-  Info,
-} from "lucide-react";
+  createReceiptPdf,
+  enrollmentDisplay,
+  formatINR,
+  getFeeSnapshot,
+  normalizePayment,
+  studentDisplayName,
+  studentClass,
+} from "../utils/studentAcademicUtils";
 
-import AdminLayout from "../layouts/AdminLayout";
-import FullScreenLoader from "../components/FullScreenLoader";
-import { db } from "../config/firebase";
+function ReceiptPreview({
+  student,
+  payment,
+  fee,
+  onClose,
+}) {
+  const data = useMemo(
+    () =>
+      normalizePayment(
+        payment,
+        student,
+        fee
+      ),
+    [payment, student, fee]
+  );
 
-function normalize(value) {
-  return String(value ?? "").trim().toLowerCase();
-}
+  const download = () => {
+    createReceiptPdf(
+      student,
+      payment,
+      fee
+    ).save(
+      `fee-receipt-${data.receiptNo}.pdf`
+    );
+  };
 
-function compareClasses(a, b) {
-  const aName = String(a?.name || "").trim();
-  const bName = String(b?.name || "").trim();
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
+          onClose();
+        }
+      }}
+    >
+      <div className="max-h-[95vh] w-full max-w-4xl overflow-auto rounded-[30px] bg-white shadow-2xl">
+        <div className="sticky top-0 z-20 flex items-center justify-between bg-gradient-to-r from-emerald-700 to-teal-700 px-6 py-5 text-white">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[.2em] text-emerald-100">
+              Official Fee Receipt
+            </p>
 
-  const aNumber = aName.match(/\d+/);
-  const bNumber = bName.match(/\d+/);
+            <h2 className="mt-1 text-xl font-black">
+              {data.receiptNo}
+            </h2>
+          </div>
 
-  if (aNumber && bNumber) {
-    const difference =
-      Number(aNumber[0]) - Number(bNumber[0]);
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-xl font-black"
+          >
+            ×
+          </button>
+        </div>
 
-    if (difference !== 0) return difference;
-  }
+        <div className="p-5 sm:p-8">
+          <div className="rounded-[30px] border-4 border-emerald-700 bg-white p-5 sm:p-8">
+            <div className="text-center">
+              <h1 className="text-3xl font-black text-emerald-800">
+                XYZ PUBLIC SCHOOL
+              </h1>
 
-  if (aNumber && !bNumber) return -1;
-  if (!aNumber && bNumber) return 1;
+              <p className="mt-1 text-[9px] font-black uppercase tracking-[.3em] text-slate-500">
+                Official Fee Payment Receipt
+              </p>
+            </div>
 
-  return aName.localeCompare(
-    bName,
-    undefined,
-    { numeric: true, sensitivity: "base" }
+            <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[8px] font-black uppercase text-slate-400">
+                  Student
+                </p>
+
+                <p className="mt-1 text-sm font-black text-slate-800">
+                  {studentDisplayName(
+                    student
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[8px] font-black uppercase text-slate-400">
+                  Enrollment
+                </p>
+
+                <p className="mt-1 text-sm font-black text-slate-800">
+                  {enrollmentDisplay(
+                    student
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[8px] font-black uppercase text-slate-400">
+                  Class
+                </p>
+
+                <p className="mt-1 text-sm font-black text-slate-800">
+                  {studentClass(
+                    student
+                  )}{" "}
+                  -{" "}
+                  {student?.section ||
+                    "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
+              <div className="grid grid-cols-[1fr_auto] bg-emerald-800 px-4 py-3 text-[9px] font-black uppercase tracking-wider text-white">
+                <span>Particular</span>
+                <span>Amount</span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {[
+                  [
+                    "Receipt Number",
+                    data.receiptNo,
+                  ],
+                  [
+                    "Payment Date",
+                    data.date,
+                  ],
+                  [
+                    "Payment Time",
+                    data.time,
+                  ],
+                  [
+                    "Payment Method",
+                    data.method,
+                  ],
+                  [
+                    "Fee Category",
+                    data.feeType ===
+                    "TRANSPORTATION"
+                      ? "Transportation"
+                      : "Academic",
+                  ],
+                  [
+                    "Academic Fee",
+                    formatINR(
+                      data.annualFee
+                    ),
+                  ],
+                  [
+                    "Transportation Charge",
+                    formatINR(
+                      data.transportCharge
+                    ),
+                  ],
+                  [
+                    "Current Payment",
+                    formatINR(
+                      data.amount
+                    ),
+                  ],
+                ].map(
+                  ([label, value]) => (
+                    <div
+                      key={label}
+                      className="grid grid-cols-[1fr_auto] gap-4 px-4 py-3 text-xs"
+                    >
+                      <span className="font-semibold text-slate-600">
+                        {label}
+                      </span>
+
+                      <span className="font-black text-slate-900">
+                        {value}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-emerald-50 p-4">
+                <p className="text-[9px] font-black uppercase text-emerald-600">
+                  Total Paid
+                </p>
+
+                <p className="mt-1 text-2xl font-black text-emerald-800">
+                  {formatINR(
+                    data.totalPaidAfter
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-blue-50 p-4">
+                <p className="text-[9px] font-black uppercase text-blue-600">
+                  Outstanding Due
+                </p>
+
+                <p className="mt-1 text-2xl font-black text-blue-900">
+                  {formatINR(
+                    data.totalDueAfter
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[9px] font-black uppercase text-slate-400">
+                  Academic Account
+                </p>
+
+                <p className="mt-1 text-xs font-black text-slate-700">
+                  Paid{" "}
+                  {formatINR(
+                    data.academicPaidAfter
+                  )}{" "}
+                  • Due{" "}
+                  {formatINR(
+                    data.academicDueAfter
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-violet-50 p-4">
+                <p className="text-[9px] font-black uppercase text-violet-500">
+                  Transport Account
+                </p>
+
+                <p className="mt-1 text-xs font-black text-violet-900">
+                  Paid{" "}
+                  {formatINR(
+                    data.transportPaidAfter
+                  )}{" "}
+                  • Due{" "}
+                  {formatINR(
+                    data.transportDueAfter
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {payment?.remarks && (
+              <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                <p className="text-[9px] font-black uppercase text-slate-400">
+                  Remarks
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  {payment.remarks}
+                </p>
+              </div>
+            )}
+
+            <div className="mt-8 border-t border-slate-200 pt-5 text-center">
+              <p className="text-[9px] text-slate-400">
+                Computer-generated official school fee receipt.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white p-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() =>
+              window.print()
+            }
+            className="rounded-xl bg-slate-900 px-5 py-3 text-xs font-black text-white"
+          >
+            Print
+          </button>
+
+          <button
+            type="button"
+            onClick={download}
+            className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-white"
+          >
+            Download PDF
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function money(value) {
-  return `₹ ${Number(value || 0).toLocaleString("en-IN")}`;
+function ReceiptCard({
+  student,
+  payment,
+  fee,
+  onView,
+}) {
+  const data =
+    normalizePayment(
+      payment,
+      student,
+      fee
+    );
+
+  const transport =
+    data.feeType ===
+    "TRANSPORTATION";
+
+  return (
+    <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <span
+            className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase ${
+              transport
+                ? "bg-violet-50 text-violet-700"
+                : "bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            {transport
+              ? "Transportation"
+              : "Academic"}
+          </span>
+
+          <h3 className="mt-3 text-sm font-black text-slate-900">
+            {data.receiptNo}
+          </h3>
+
+          <p className="mt-1 text-[10px] text-slate-500">
+            {data.date} •{" "}
+            {data.method}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-slate-50 px-4 py-3 text-right">
+          <p className="text-[8px] font-black uppercase text-slate-400">
+            Payment
+          </p>
+
+          <p className="mt-1 text-base font-black text-emerald-700">
+            {formatINR(
+              data.amount
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-[8px] font-black uppercase text-slate-400">
+            Category
+          </p>
+          <p className="mt-1 text-xs font-black">
+            {transport
+              ? "Transportation"
+              : "Academic"}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-[8px] font-black uppercase text-slate-400">
+            Total Paid
+          </p>
+          <p className="mt-1 text-xs font-black text-emerald-700">
+            {formatINR(
+              data.totalPaidAfter
+            )}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-blue-50 p-3">
+          <p className="text-[8px] font-black uppercase text-blue-500">
+            Due
+          </p>
+          <p className="mt-1 text-xs font-black text-blue-900">
+            {formatINR(
+              data.totalDueAfter
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={() =>
+            onView(payment)
+          }
+          className="flex-1 rounded-xl bg-slate-900 py-3 text-[10px] font-black text-white"
+        >
+          View Receipt
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            createReceiptPdf(
+              student,
+              payment,
+              fee
+            ).save(
+              `fee-receipt-${data.receiptNo}.pdf`
+            )
+          }
+          className="flex-1 rounded-xl bg-emerald-600 py-3 text-[10px] font-black text-white"
+        >
+          Download PDF
+        </button>
+      </div>
+    </article>
+  );
 }
 
-function StudentFee() {
-  const [sessions, setSessions] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [fees, setFees] = useState({});
-  const [selectedSessionId, setSelectedSessionId] =
+export default function StudentFeeReceipts() {
+  const navigate =
+    useNavigate();
+
+  const [student, setStudent] =
+    useState(null);
+
+  const [feeSettings, setFeeSettings] =
+    useState({});
+
+  const [feeStructures, setFeeStructures] =
+    useState({});
+
+  const [payments, setPayments] =
+    useState([]);
+
+  const [filter, setFilter] =
+    useState("ALL");
+
+  const [search, setSearch] =
     useState("");
 
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [selected, setSelected] =
+    useState(null);
 
-  /* =========================================================
-     LOAD ACADEMIC CLASSES
-  ========================================================= */
+  const [loading, setLoading] =
+    useState(true);
 
   useEffect(() => {
-    loadAcademicData();
-  }, []);
+    let mounted = true;
+    let unsubscribe =
+      () => {};
 
-  async function loadAcademicData() {
-    try {
-      setLoading(true);
-      setError("");
+    async function start() {
+      try {
+        const user =
+          auth.currentUser;
 
-      const [
-        sessionSnap,
-        classSnap,
-      ] = await Promise.all([
-        getDocs(collection(db, "academicSessions")),
-        getDocs(collection(db, "classes")),
-      ]);
-
-      const sessionData = sessionSnap.docs.map(
-        (item) => ({
-          id: item.id,
-          ...item.data(),
-        })
-      );
-
-      const classData = classSnap.docs.map(
-        (item) => ({
-          id: item.id,
-          ...item.data(),
-        })
-      );
-
-      setSessions(sessionData);
-
-      const active =
-        sessionData.find(
-          (item) => item.active === true
-        ) ||
-        sessionData[
-          sessionData.length - 1
-        ];
-
-      setSelectedSessionId(
-        active?.id || ""
-      );
-
-      setClasses(classData);
-    } catch (err) {
-      console.error(
-        "Student fee academic data error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Unable to load academic classes."
-      );
-    }
-  }
-
-  /* =========================================================
-     REAL-TIME FEE SETTINGS
-  ========================================================= */
-
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      doc(db, "settings", "feeSettings"),
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-
-          setFees(
-            data.classFees || {}
+        if (!user) {
+          navigate(
+            "/student-login",
+            {
+              replace: true,
+            }
           );
-        } else {
-          setFees({});
+          return;
         }
 
-        setLoading(false);
-      },
-      (err) => {
+        const snapshot =
+          await getDocs(
+            query(
+              collection(
+                db,
+                "students"
+              ),
+              limit(500)
+            )
+          );
+
+        const profile =
+          snapshot.docs
+            .map(
+              (item) => ({
+                id: item.id,
+                ...item.data(),
+              })
+            )
+            .find(
+              (item) =>
+                String(
+                  item.uid ||
+                    item.authUid ||
+                    ""
+                ) ===
+                  String(
+                    user.uid
+                  ) ||
+                String(
+                  item.email ||
+                    item.accountEmail ||
+                    ""
+                ).toLowerCase() ===
+                  String(
+                    user.email ||
+                      ""
+                  ).toLowerCase()
+            );
+
+        if (!profile) {
+          throw new Error(
+            "Student profile not found."
+          );
+        }
+
+        if (!mounted) return;
+
+        setStudent(
+          profile
+        );
+
+        unsubscribe =
+          onSnapshot(
+            doc(
+              db,
+              "students",
+              profile.id
+            ),
+            (snap) => {
+              if (!mounted) return;
+
+              if (!snap.exists()) {
+                setPayments([]);
+                return;
+              }
+
+              const data =
+                snap.data();
+
+              setStudent({
+                id: snap.id,
+                ...data,
+              });
+
+              const history =
+                Array.isArray(
+                  data.paymentHistory
+                )
+                  ? data.paymentHistory
+                  : [];
+
+              setPayments(
+                history
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      Number(
+                        b.timestamp ||
+                          0
+                      ) -
+                      Number(
+                        a.timestamp ||
+                          0
+                      )
+                  )
+              );
+            }
+          );
+      } catch (err) {
         console.error(
-          "Fee settings listener error:",
+          "Student receipt page:",
           err
         );
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
 
-        setError(
-          err?.message ||
-            "Unable to load fee settings."
+    start();
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    return onSnapshot(
+      doc(
+        db,
+        "settings",
+        "feeSettings"
+      ),
+      (snapshot) => {
+        setFeeSettings(
+          snapshot.exists()
+            ? snapshot.data()
+            : {}
         );
-
-        setLoading(false);
       }
     );
-
-    return () => unsubscribe();
   }, []);
 
-  /* =========================================================
-     SESSION CLASSES
-  ========================================================= */
+  useEffect(() => {
+    if (!auth.currentUser) return;
 
-  const selectedSession = sessions.find(
-    (session) =>
-      session.id === selectedSessionId
-  );
+    return onSnapshot(
+      collection(
+        db,
+        "feeStructures"
+      ),
+      (snapshot) => {
+        const data = {};
 
-  const sessionClasses = useMemo(() => {
-    return classes
-      .filter(
-        (item) =>
-          !item.sessionId ||
-          item.sessionId === selectedSessionId
-      )
-      .sort(compareClasses);
-  }, [
-    classes,
-    selectedSessionId,
-  ]);
-
-  const filteredClasses = useMemo(() => {
-    const query = normalize(search);
-
-    if (!query) {
-      return sessionClasses;
-    }
-
-    return sessionClasses.filter(
-      (item) =>
-        normalize(item.name).includes(query) ||
-        normalize(item.id).includes(query)
-    );
-  }, [
-    sessionClasses,
-    search,
-  ]);
-
-  /* =========================================================
-     UPDATE FEE
-  ========================================================= */
-
-  function changeFee(classId, value) {
-    const numericValue =
-      value === ""
-        ? ""
-        : Math.max(
-            0,
-            Number(value)
-          );
-
-    setFees((previous) => ({
-      ...previous,
-      [classId]: numericValue,
-    }));
-  }
-
-  /* =========================================================
-     SAVE
-  ========================================================= */
-
-  async function saveFees() {
-    try {
-      setSaving(true);
-      setMessage("");
-      setError("");
-
-      const activeFees = {};
-
-      Object.entries(fees).forEach(
-        ([classId, amount]) => {
-          activeFees[classId] =
-            Number(amount || 0);
-        }
-      );
-
-      const legacyFields = {};
-
-      /*
-        Keep compatibility with the existing
-        class1/class2/... fee system.
-      */
-
-      sessionClasses.forEach(
-        (classItem) => {
-          const match =
-            String(
-              classItem.name || ""
-            ).match(/\d+/);
-
-          if (match) {
-            legacyFields[
-              `class${match[0]}`
-            ] =
-              Number(
-                activeFees[
-                  classItem.id
-                ] || 0
-              );
+        snapshot.forEach(
+          (item) => {
+            data[item.id] = {
+              id: item.id,
+              ...item.data(),
+            };
           }
-        }
-      );
+        );
 
-      await setDoc(
-        doc(
-          db,
-          "settings",
-          "feeSettings"
-        ),
-        {
-          classFees: activeFees,
-          ...legacyFields,
-
-          session:
-            selectedSession?.name ||
-            "Current Session",
-
-          updatedBy: "Admin",
-
-          updatedAt:
-            serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
-
-      setMessage(
-        "Fee structure saved successfully."
-      );
-
-      window.setTimeout(
-        () => setMessage(""),
-        3500
-      );
-    } catch (err) {
-      console.error(
-        "Student fee save error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Unable to save fee structure."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const totalConfiguredFee =
-    filteredClasses.reduce(
-      (sum, item) =>
-        sum +
-        Number(
-          fees[item.id] || 0
-        ),
-      0
+        setFeeStructures(
+          data
+        );
+      }
     );
+  }, []);
+
+  const fee =
+    useMemo(
+      () =>
+        getFeeSnapshot(
+          student || {},
+          feeSettings,
+          feeStructures
+        ),
+      [
+        student,
+        feeSettings,
+        feeStructures,
+      ]
+    );
+
+  const filtered =
+    useMemo(() => {
+      const q =
+        search
+          .trim()
+          .toLowerCase();
+
+      return payments.filter(
+        (payment) => {
+          const type =
+            payment?.feeType ||
+            "ACADEMIC";
+
+          if (
+            filter !==
+              "ALL" &&
+            type !==
+              filter
+          ) {
+            return false;
+          }
+
+          if (!q) return true;
+
+          return [
+            payment?.receiptNo,
+            payment?.date,
+            payment?.method,
+            payment?.remarks,
+            payment?.feeType,
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(q);
+        }
+      );
+    }, [
+      payments,
+      filter,
+      search,
+    ]);
 
   if (loading) {
     return (
-      <FullScreenLoader
-        message="Loading academic fee structure..."
-      />
+      <StudentLayout>
+        <div className="flex min-h-[75vh] items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" />
+            <p className="mt-4 text-sm font-black">
+              Loading Fee Receipts
+            </p>
+          </div>
+        </div>
+      </StudentLayout>
     );
   }
 
   return (
-    <AdminLayout>
+    <StudentLayout>
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-[1450px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+          <section className="rounded-[30px] bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 p-6 text-white shadow-xl sm:p-8">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider">
+                  Finance Centre
+                </span>
 
-      <div className="max-w-[1450px] mx-auto p-4 sm:p-6 lg:p-8">
+                <h1 className="mt-4 text-3xl font-black sm:text-4xl">
+                  Official Fee Receipts
+                </h1>
 
-        {/* =====================================================
-            HERO
-        ====================================================== */}
-
-        <section className="relative overflow-hidden rounded-[30px] bg-gradient-to-br from-emerald-950 via-green-800 to-emerald-600 text-white shadow-xl">
-
-          <div className="absolute -right-24 -top-28 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
-
-          <div className="relative p-6 sm:p-8">
-
-            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
-
-              <div className="flex items-start gap-4">
-
-                <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
-                  <WalletCards size={28} />
-                </div>
-
-                <div>
-
-                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-bold">
-                    <Sparkles size={13} />
-                    Dynamic Fee Control
-                  </span>
-
-                  <h1 className="text-3xl sm:text-4xl font-black mt-3">
-                    Student Fee Setup
-                  </h1>
-
-                  <p className="text-emerald-100 mt-2 max-w-2xl">
-                    Configure annual fees class-wise.
-                    Numeric classes and custom classes such
-                    as LKG, UKG, Nursery or Pre-Nursery are
-                    supported automatically.
-                  </p>
-
-                </div>
-
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200">
+                  Your academic and{" "}
+                  <span className="font-black text-cyan-200">
+                    transportation payments
+                  </span>{" "}
+                  are structured in one official receipt centre.
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={loadAcademicData}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white text-green-800 font-bold hover:bg-emerald-50"
+                onClick={() =>
+                  navigate(
+                    "/student-dashboard"
+                  )
+                }
+                className="rounded-xl bg-white px-4 py-3 text-xs font-black text-slate-900"
               >
-                <RefreshCw size={18} />
-                Refresh Classes
+                ← Dashboard
               </button>
-
             </div>
+          </section>
 
-          </div>
-
-        </section>
-
-        {/* =====================================================
-            SESSION + SUMMARY
-        ====================================================== */}
-
-        <section className="grid lg:grid-cols-[1fr_auto] gap-4 mt-6">
-
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-
-            <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-400">
-              <Settings2 size={15} />
-              Academic Session
-            </div>
-
-            <select
-              value={selectedSessionId}
-              onChange={(event) =>
-                setSelectedSessionId(
-                  event.target.value
-                )
-              }
-              className="mt-3 w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 font-bold outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100"
-            >
-              <option value="">
-                Select Session
-              </option>
-
-              {sessions.map(
-                (session) => (
-                  <option
-                    key={session.id}
-                    value={session.id}
-                  >
-                    {session.name}
-                    {session.active
-                      ? " • Active"
-                      : ""}
-                  </option>
-                )
-              )}
-            </select>
-
-          </div>
-
-          <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-5 min-w-[240px]">
-
-            <div className="flex items-center gap-2 text-emerald-700 text-xs font-bold uppercase">
-              <IndianRupee size={15} />
-              Configured Total
-            </div>
-
-            <p className="text-3xl font-black text-emerald-800 mt-2">
-              {money(
-                totalConfiguredFee
-              )}
-            </p>
-
-            <p className="text-xs text-emerald-700 mt-1">
-              Based on visible class entries
-            </p>
-
-          </div>
-
-        </section>
-
-        {/* =====================================================
-            SEARCH
-        ====================================================== */}
-
-        <section className="bg-white border border-slate-200 rounded-3xl shadow-sm p-5 mt-6">
-
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-
-            <div>
-              <h2 className="text-xl font-black">
-                Class Fee Structure
-              </h2>
-
-              <p className="text-sm text-slate-500 mt-1">
-                Set the annual fee for every class.
+          <section className="grid gap-4 sm:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-[9px] font-black uppercase text-slate-400">
+                Receipts
+              </p>
+              <p className="mt-1 text-2xl font-black">
+                {payments.length}
               </p>
             </div>
 
-            <div className="relative w-full md:max-w-md">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+              <p className="text-[9px] font-black uppercase text-emerald-600">
+                Total Payment History
+              </p>
+              <p className="mt-1 text-2xl font-black text-emerald-800">
+                {formatINR(
+                  payments.reduce(
+                    (sum, payment) =>
+                      sum +
+                      Number(
+                        payment.amount ||
+                          0
+                      ),
+                    0
+                  )
+                )}
+              </p>
+            </div>
 
-              <Search
-                size={19}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-              />
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+              <p className="text-[9px] font-black uppercase text-blue-600">
+                Total Paid
+              </p>
+              <p className="mt-1 text-2xl font-black text-blue-900">
+                {formatINR(
+                  fee.totalPaid
+                )}
+              </p>
+            </div>
 
+            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-5">
+              <p className="text-[9px] font-black uppercase text-violet-600">
+                Current Due
+              </p>
+              <p className="mt-1 text-2xl font-black text-violet-900">
+                {formatINR(
+                  fee.totalDue
+                )}
+              </p>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
               <input
                 value={search}
                 onChange={(event) =>
@@ -495,225 +814,123 @@ function StudentFee() {
                     event.target.value
                   )
                 }
-                placeholder="Search class e.g. LKG, UKG, 4..."
-                className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none"
+                placeholder="Search receipt, date, method or remarks…"
+                className="rounded-xl border border-slate-200 px-4 py-3 text-xs font-semibold outline-none focus:border-emerald-500"
               />
 
-            </div>
-
-          </div>
-
-        </section>
-
-        {/* =====================================================
-            CLASS CARDS
-        ====================================================== */}
-
-        <section className="mt-6">
-
-          {filteredClasses.length === 0 ? (
-
-            <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center">
-
-              <GraduationCap
-                size={42}
-                className="mx-auto text-slate-300"
-              />
-
-              <h2 className="text-xl font-black mt-4">
-                No Classes Found
-              </h2>
-
-              <p className="text-sm text-slate-500 mt-2">
-                Create the class first in Academic Setup.
-              </p>
-
-            </div>
-
-          ) : (
-
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
-
-              {filteredClasses.map(
-                (classItem) => {
-
-                  const amount =
-                    fees[
-                      classItem.id
-                    ] ?? "";
-
-                  return (
-                    <div
-                      key={classItem.id}
-                      className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-lg hover:border-green-200 transition"
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["ALL", "All"],
+                  [
+                    "ACADEMIC",
+                    "Academic",
+                  ],
+                  [
+                    "TRANSPORTATION",
+                    "Transportation",
+                  ],
+                ].map(
+                  ([value, label]) => (
+                    <button
+                      key={
+                        value
+                      }
+                      type="button"
+                      onClick={() =>
+                        setFilter(
+                          value
+                        )
+                      }
+                      className={`rounded-xl px-4 py-3 text-[10px] font-black ${
+                        filter ===
+                        value
+                          ? "bg-emerald-600 text-white"
+                          : "border border-slate-200 bg-white text-slate-600"
+                      }`}
                     >
-
-                      <div className="flex items-start justify-between gap-3">
-
-                        <div className="flex items-center gap-3">
-
-                          <div className="w-12 h-12 rounded-2xl bg-green-50 text-green-700 flex items-center justify-center">
-                            <GraduationCap size={23} />
-                          </div>
-
-                          <div>
-
-                            <h3 className="text-xl font-black text-slate-900">
-                              {classItem.name}
-                            </h3>
-
-                            <p className="text-xs text-slate-500 mt-1">
-                              {classItem.sections?.length
-                                ? `${classItem.sections.length} section${classItem.sections.length > 1 ? "s" : ""}`
-                                : "No sections"}
-                            </p>
-
-                          </div>
-
-                        </div>
-
-                        {Number(amount || 0) > 0 && (
-                          <CheckCircle2
-                            size={20}
-                            className="text-green-600"
-                          />
-                        )}
-
-                      </div>
-
-                      <div className="mt-6">
-
-                        <label className="text-sm font-bold text-slate-700">
-                          Annual Fee
-                        </label>
-
-                        <div className="relative mt-2">
-
-                          <IndianRupee
-                            size={19}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 text-green-600"
-                          />
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={amount}
-                            onChange={(event) =>
-                              changeFee(
-                                classItem.id,
-                                event.target.value
-                              )
-                            }
-                            placeholder="Enter annual fee"
-                            className="w-full h-14 pl-11 pr-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none text-lg font-black"
-                          />
-
-                        </div>
-
-                      </div>
-
-                      <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-3">
-
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-500">
-                            Current setup
-                          </span>
-
-                          <b className="text-slate-800">
-                            {money(amount)}
-                          </b>
-                        </div>
-
-                      </div>
-
-                    </div>
-                  );
-                }
-              )}
-
-            </div>
-
-          )}
-
-        </section>
-
-        {/* =====================================================
-            MESSAGE
-        ====================================================== */}
-
-        {(message || error) && (
-          <div
-            className={`mt-6 rounded-2xl p-4 border font-semibold ${
-              error
-                ? "bg-red-50 border-red-200 text-red-700"
-                : "bg-green-50 border-green-200 text-green-700"
-            }`}
-          >
-            {error || message}
-          </div>
-        )}
-
-        {/* =====================================================
-            SAVE BAR
-        ====================================================== */}
-
-        <section className="sticky bottom-4 z-30 mt-8">
-
-          <div className="bg-slate-950 text-white rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-
-            <div className="flex items-start gap-3">
-
-              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-                <Info size={19} />
+                      {label}
+                    </button>
+                  )
+                )}
               </div>
+            </div>
+          </section>
 
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="font-black">
-                  Ready to save fee structure?
+                <p className="text-[9px] font-black uppercase tracking-[.2em] text-violet-600">
+                  Payment Ledger
                 </p>
 
-                <p className="text-xs text-slate-400 mt-1">
-                  {selectedSession?.name ||
-                    "Select an academic session"}{" "}
-                  • {filteredClasses.length} class
-                  {filteredClasses.length !== 1
-                    ? "es"
-                    : ""}
-                </p>
+                <h2 className="mt-1 text-xl font-black text-slate-900">
+                  Receipt History
+                </h2>
               </div>
 
+              <span className="text-[10px] font-bold text-slate-400">
+                {filtered.length} record(s)
+              </span>
             </div>
 
-            <button
-              type="button"
-              onClick={saveFees}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-black hover:from-green-400 hover:to-emerald-400 disabled:opacity-60"
-            >
-              {saving ? (
-                <>
-                  <RefreshCw
-                    size={18}
-                    className="animate-spin"
-                  />
-                  Saving...
-                </>
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {filtered.length ? (
+                filtered.map(
+                  (
+                    payment,
+                    index
+                  ) => (
+                    <ReceiptCard
+                      key={
+                        payment.receiptNo ||
+                        `${payment.timestamp}-${index}`
+                      }
+                      student={
+                        student
+                      }
+                      payment={
+                        payment
+                      }
+                      fee={fee}
+                      onView={
+                        setSelected
+                      }
+                    />
+                  )
+                )
               ) : (
-                <>
-                  <Save size={18} />
-                  Save Fee Structure
-                </>
+                <div className="lg:col-span-2 rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-12 text-center">
+                  <p className="text-sm font-black text-slate-800">
+                    No Receipt Found
+                  </p>
+
+                  <p className="mt-1 text-[10px] leading-5 text-slate-500">
+                    Successful payments recorded by the school will appear here.
+                  </p>
+                </div>
               )}
-            </button>
+            </div>
+          </section>
+        </div>
 
-          </div>
-
-        </section>
-
+        {selected &&
+          student && (
+            <ReceiptPreview
+              student={
+                student
+              }
+              payment={
+                selected
+              }
+              fee={fee}
+              onClose={() =>
+                setSelected(
+                  null
+                )
+              }
+            />
+          )}
       </div>
-
-    </AdminLayout>
+    </StudentLayout>
   );
 }
-
-export default StudentFee;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -30,6 +30,16 @@ import {
   WalletCards,
   BookMarked,
   UserPlus,
+  CalendarCheck2,
+  Download,
+  Search,
+  X,
+  ClipboardList,
+  TrendingUp,
+  ShieldCheck,
+  UserCheck,
+  UserX,
+  Clock4,
 } from "lucide-react";
 
 import { db, auth } from "../config/firebase";
@@ -234,6 +244,93 @@ function AdminDashboard() {
 
   const navigate = useNavigate();
 
+  /* =======================================================
+     ADVANCED DASHBOARD SCROLL MEMORY
+     -------------------------------------------------------
+     Keeps the user's position when opening another screen
+     and coming back with browser Back / app navigation.
+  ======================================================= */
+
+  const dashboardScrollKey = "admin-dashboard-scroll-y";
+
+  useEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+
+    let restored = false;
+
+    const restoreScroll = () => {
+      if (restored) return;
+
+      const saved = Number(
+        window.sessionStorage.getItem(dashboardScrollKey) || 0
+      );
+
+      if (Number.isFinite(saved) && saved > 0) {
+        window.scrollTo({
+          top: saved,
+          behavior: "auto",
+        });
+      }
+
+      restored = true;
+    };
+
+    const saveScroll = () => {
+      window.sessionStorage.setItem(
+        dashboardScrollKey,
+        String(Math.max(0, Math.round(window.scrollY)))
+      );
+    };
+
+    const firstFrame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(restoreScroll);
+    });
+
+    window.addEventListener("scroll", saveScroll, {
+      passive: true,
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      saveScroll();
+      window.removeEventListener("scroll", saveScroll);
+    };
+  }, []);
+
+  /* -------------------------------------------------------
+     Stable in-page navigation.
+     No /attendance route is required.
+  ------------------------------------------------------- */
+
+  const openAttendanceOverview = () => {
+    const section = document.getElementById(
+      "admin-attendance-section"
+    );
+
+    if (!section) return;
+
+    window.sessionStorage.setItem(
+      dashboardScrollKey,
+      String(Math.max(0, Math.round(window.scrollY)))
+    );
+
+    section.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
+  const openRoute = (path) => {
+    window.sessionStorage.setItem(
+      dashboardScrollKey,
+      String(Math.max(0, Math.round(window.scrollY)))
+    );
+
+    navigate(path);
+  };
+
 
   /* =======================================================
      STATE
@@ -270,7 +367,22 @@ function AdminDashboard() {
     activeSession: null,
 
     recentResults: [],
-
+    attendance: {
+      totalRecords: 0,
+      present: 0,
+      absent: 0,
+      leave: 0,
+      percentage: 0,
+      todayRecords: 0,
+      todayPresent: 0,
+      todayAbsent: 0,
+      todayLeave: 0,
+      recentActivity: [],
+      byClass: [],
+      students: [],
+    },
+    teachers: [],
+    attendanceAccess: [],
   });
 
 
@@ -286,6 +398,9 @@ function AdminDashboard() {
     let subjects = [];
     let sessions = [];
     let feeSettings = {};
+    let attendance = [];
+    let teachers = [];
+    let attendanceAccess = [];
 
     let firstLoad = true;
 
@@ -426,6 +541,209 @@ function AdminDashboard() {
 
 
         /* =================================================
+           ATTENDANCE
+        ================================================= */
+
+        const attendanceStatus = (item) =>
+          String(
+            item?.status ??
+              item?.attendanceStatus ??
+              item?.value ??
+              ""
+          ).trim().toUpperCase();
+
+        const attendancePresent = attendance.filter(
+          (item) => attendanceStatus(item) === "PRESENT"
+        ).length;
+
+        const attendanceAbsent = attendance.filter(
+          (item) => attendanceStatus(item) === "ABSENT"
+        ).length;
+
+        const attendanceLeave = attendance.filter(
+          (item) =>
+            attendanceStatus(item) === "LEAVE" ||
+            attendanceStatus(item) === "L"
+        ).length;
+
+        const attendanceCounted =
+          attendancePresent + attendanceAbsent + attendanceLeave;
+
+        const attendancePercentage = attendanceCounted
+          ? Math.round((attendancePresent / attendanceCounted) * 10000) / 100
+          : 0;
+
+        const todayKey = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date());
+
+        const isTodayAttendance = (item) => {
+          const raw =
+            item?.date ??
+            item?.attendanceDate ??
+            item?.dayDate ??
+            item?.markedDate;
+
+          if (!raw) return false;
+
+          if (typeof raw?.toDate === "function") {
+            return new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Kolkata",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            }).format(raw.toDate()) === todayKey;
+          }
+
+          const parsed = new Date(raw);
+          if (!Number.isNaN(parsed.getTime())) {
+            return new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Kolkata",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            }).format(parsed) === todayKey;
+          }
+
+          // Attendance records currently store dates as YYYY-MM-DD.
+          return String(raw).slice(0, 10) === todayKey;
+        };
+
+        const todayAttendance = attendance.filter(isTodayAttendance);
+
+        const todayPresent = todayAttendance.filter(
+          (item) => attendanceStatus(item) === "PRESENT"
+        ).length;
+
+        const todayAbsent = todayAttendance.filter(
+          (item) => attendanceStatus(item) === "ABSENT"
+        ).length;
+
+        const todayLeave = todayAttendance.filter(
+          (item) =>
+            attendanceStatus(item) === "LEAVE" ||
+            attendanceStatus(item) === "L"
+        ).length;
+
+        const teacherMap = new Map(
+          teachers.map((teacher) => [
+            teacher.authUid ?? teacher.id,
+            teacher.name ?? teacher.email ?? "Teacher",
+          ])
+        );
+
+        const recentAttendance = [...attendance]
+          .sort(
+            (a, b) =>
+              getTimestamp(b?.updatedAt ?? b?.createdAt ?? b?.timestamp) -
+              getTimestamp(a?.updatedAt ?? a?.createdAt ?? a?.timestamp)
+          )
+          .slice(0, 10)
+          .map((item) => ({
+            ...item,
+            displayTeacher:
+              item.markedByName ??
+              item.teacherName ??
+              teacherMap.get(item.markedBy) ??
+              teacherMap.get(item.teacherUid) ??
+              "Teacher",
+          }));
+
+        const classAttendanceMap = new Map();
+
+        attendance.forEach((item) => {
+          const className = String(
+            item?.className ?? item?.class ?? "Unknown"
+          ).trim();
+
+          const section = String(item?.section ?? "").trim();
+          const key = `${className}|||${section}`;
+
+          if (!classAttendanceMap.has(key)) {
+            classAttendanceMap.set(key, {
+              className,
+              section,
+              present: 0,
+              absent: 0,
+              leave: 0,
+              total: 0,
+            });
+          }
+
+          const row = classAttendanceMap.get(key);
+          const status = attendanceStatus(item);
+
+          if (status === "PRESENT") row.present++;
+          else if (status === "ABSENT") row.absent++;
+          else if (status === "LEAVE" || status === "L") row.leave++;
+
+          row.total++;
+        });
+
+        const attendanceByClass = [...classAttendanceMap.values()]
+          .map((row) => ({
+            ...row,
+            percentage: row.total
+              ? Math.round((row.present / row.total) * 10000) / 100
+              : 0,
+          }))
+          .sort((a, b) =>
+            `${a.className}-${a.section}`.localeCompare(
+              `${b.className}-${b.section}`
+            )
+          );
+
+        const studentAttendanceMap = new Map();
+
+        attendance.forEach((item) => {
+          const studentId =
+            item?.studentId ??
+            item?.studentUid ??
+            item?.studentAccountId ??
+            item?.enrollmentNo ??
+            item?.studentName;
+
+          if (!studentId) return;
+
+          if (!studentAttendanceMap.has(String(studentId))) {
+            studentAttendanceMap.set(String(studentId), {
+              studentId,
+              studentName: item?.studentName ?? "Student",
+              enrollmentNo: item?.enrollmentNo ?? "",
+              className: item?.className ?? item?.class ?? "",
+              section: item?.section ?? "",
+              present: 0,
+              absent: 0,
+              leave: 0,
+              total: 0,
+            });
+          }
+
+          const row = studentAttendanceMap.get(String(studentId));
+          const status = attendanceStatus(item);
+
+          if (status === "PRESENT") row.present++;
+          else if (status === "ABSENT") row.absent++;
+          else if (status === "LEAVE" || status === "L") row.leave++;
+
+          row.total++;
+        });
+
+        const attendanceStudents = [...studentAttendanceMap.values()]
+          .map((row) => ({
+            ...row,
+            percentage: row.total
+              ? Math.round((row.present / row.total) * 10000) / 100
+              : 0,
+          }))
+          .sort((a, b) =>
+            String(a.studentName).localeCompare(String(b.studentName))
+          );
+
+        /* =================================================
            SET DASHBOARD
         ================================================= */
 
@@ -463,6 +781,29 @@ function AdminDashboard() {
           activeSession,
 
           recentResults,
+
+          // Attendance — keep the calculated values in the main
+          // dashboard state so the Admin UI receives realtime data.
+          attendance: {
+            totalRecords: attendanceCounted,
+            present: attendancePresent,
+            absent: attendanceAbsent,
+            leave: attendanceLeave,
+            percentage: attendancePercentage,
+            todayRecords: todayAttendance.length,
+            todayPresent,
+            todayAbsent,
+            todayLeave,
+            recentActivity: recentAttendance,
+            byClass: attendanceByClass,
+            students: attendanceStudents,
+          },
+
+          // These were being listened to in realtime but were not being
+          // copied into state, which made the Admin attendance panel see
+          // empty/default data.
+          teachers: [...teachers],
+          attendanceAccess: [...attendanceAccess],
 
         });
 
@@ -714,6 +1055,63 @@ function AdminDashboard() {
 
 
     /* =====================================================
+       TEACHERS REALTIME
+    ===================================================== */
+
+    const unsubscribeTeachers =
+      onSnapshot(
+        collection(db, "teachers"),
+        (snapshot) => {
+          teachers = snapshot.docs.map((item) => ({
+            id: item.id,
+            ...item.data(),
+          }));
+          calculateDashboard();
+        },
+        (error) => {
+          console.error("Teachers realtime error:", error);
+        }
+      );
+
+    /* =====================================================
+       ATTENDANCE REALTIME
+    ===================================================== */
+
+    const unsubscribeAttendance =
+      onSnapshot(
+        collection(db, "attendance"),
+        (snapshot) => {
+          attendance = snapshot.docs.map((item) => ({
+            id: item.id,
+            ...item.data(),
+          }));
+          calculateDashboard();
+        },
+        (error) => {
+          console.error("Attendance realtime error:", error);
+        }
+      );
+
+    /* =====================================================
+       ATTENDANCE ACCESS REALTIME
+    ===================================================== */
+
+    const unsubscribeAttendanceAccess =
+      onSnapshot(
+        collection(db, "attendanceAccess"),
+        (snapshot) => {
+          attendanceAccess = snapshot.docs.map((item) => ({
+            id: item.id,
+            ...item.data(),
+          }));
+          calculateDashboard();
+        },
+        (error) => {
+          console.error("Attendance access realtime error:", error);
+        }
+      );
+
+    /* =====================================================
        CLEANUP
     ===================================================== */
 
@@ -730,6 +1128,9 @@ function AdminDashboard() {
       unsubscribeSessions();
 
       unsubscribeFeeSettings();
+      unsubscribeTeachers();
+      unsubscribeAttendance();
+      unsubscribeAttendanceAccess();
 
     };
 
@@ -968,6 +1369,26 @@ function AdminDashboard() {
      UI
   ======================================================= */
 
+  const attendanceData = data?.attendance ?? {
+    totalRecords: 0,
+    present: 0,
+    absent: 0,
+    leave: 0,
+    percentage: 0,
+    todayRecords: 0,
+    todayPresent: 0,
+    todayAbsent: 0,
+    todayLeave: 0,
+    recentActivity: [],
+    byClass: [],
+    students: [],
+  };
+
+  const teachersData = Array.isArray(data?.teachers) ? data.teachers : [];
+  const attendanceAccessData = Array.isArray(data?.attendanceAccess)
+    ? data.attendanceAccess
+    : [];
+
   return (
 
     <AdminLayout>
@@ -1105,9 +1526,7 @@ function AdminDashboard() {
             value={data.students}
             helper={`${data.activeStudents} active`}
             cls="bg-blue-50 text-blue-700"
-            onClick={() =>
-              navigate("/students")
-            }
+            onClick={() => openRoute("/students")}
           />
 
 
@@ -1120,7 +1539,7 @@ function AdminDashboard() {
             helper={`${data.publishedResults} published`}
             cls="bg-amber-50 text-amber-700"
             onClick={() =>
-              navigate("/view-results")
+              openRoute("/view-results")
             }
           />
 
@@ -1136,7 +1555,7 @@ function AdminDashboard() {
             helper={`${data.publishedResults} of ${data.results}`}
             cls="bg-emerald-50 text-emerald-700"
             onClick={() =>
-              navigate("/view-results")
+              openRoute("/view-results")
             }
           />
 
@@ -1152,24 +1571,72 @@ function AdminDashboard() {
             helper={`₹${data.feeCollected.toLocaleString("en-IN")} collected`}
             cls="bg-red-50 text-red-700"
             onClick={() =>
-              navigate("/fee-management")
+              openRoute("/fee-management")
             }
           />
 
         </section>
 
-
         {/* =================================================
-           QUICK OPERATIONS
+           ATTENDANCE OVERVIEW
         ================================================= */}
 
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <Metric
+            icon={<CalendarCheck2 size={21} />}
+            title="Attendance Today"
+            value={attendanceData.todayRecords}
+            helper={`${attendanceData.todayPresent} present • ${attendanceData.todayAbsent} absent`}
+            cls="bg-indigo-50 text-indigo-700"
+            onClick={openAttendanceOverview}
+          />
+
+          <Metric
+  icon={<UserCheck size={21} />}
+  title="Present"
+  value={attendanceData.present}
+  helper={`${attendanceData.percentage}% overall attendance`}
+  cls="bg-emerald-50 text-emerald-700"
+  onClick={() => {
+    document
+      .getElementById("admin-attendance-section")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+  }}
+/>
+
+          <Metric
+            icon={<UserX size={21} />}
+            title="Absent"
+            value={attendanceData.absent}
+            helper={`${attendanceData.leave} leave`}
+            cls="bg-red-50 text-red-700"
+            onClick={openAttendanceOverview}
+          />
+
+          <Metric
+            icon={<TrendingUp size={21} />}
+            title="Attendance %"
+            value={`${attendanceData.percentage}%`}
+            helper={`${attendanceData.totalRecords} recorded entries`}
+            cls="bg-purple-50 text-purple-700"
+            onClick={openAttendanceOverview}
+          />
+        </section>
+<div id="admin-attendance-section" className="scroll-mt-28">
+  <AttendanceAdminPanel
+    attendance={attendanceData}
+    teachers={teachersData}
+    attendanceAccess={attendanceAccessData}
+    onOpenAttendance={openAttendanceOverview}
+  />
+</div>
+
         <section className="grid lg:grid-cols-[1.35fr_.65fr] gap-6">
-
-
           <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-
             <div className="mb-6">
-
               <p className="text-xs font-bold uppercase tracking-wider text-green-700">
 
                 Daily workflow
@@ -1208,9 +1675,7 @@ function AdminDashboard() {
                 text="Manage session, classes and subject distribution."
                 action="Open Configuration"
                 onClick={() =>
-                  navigate(
-                    "/academic-configuration"
-                  )
+                  openRoute("/academic-configuration")
                 }
               />
 
@@ -1226,9 +1691,7 @@ function AdminDashboard() {
                 text="Register a new student record."
                 action="Add Student"
                 onClick={() =>
-                  navigate(
-                    "/add-student"
-                  )
+                  openRoute("/add-student")
                 }
               />
 
@@ -1244,9 +1707,7 @@ function AdminDashboard() {
                 text="Enter marks using the subjects configured for the student's class."
                 action="Add Result"
                 onClick={() =>
-                  navigate(
-                    "/add-result"
-                  )
+                  openRoute("/add-result")
                 }
               />
 
@@ -1262,16 +1723,31 @@ function AdminDashboard() {
                 text="View student dues, collect payments and maintain payment history."
                 action="Open Fees"
                 onClick={() =>
-                  navigate(
-                    "/fee-management"
-                  )
+                  openRoute("/fee-management")
+                }
+              />
+
+              {/* =================================================
+                 TEACHER MANAGEMENT
+                 Added only — existing code remains unchanged
+              ================================================= */}
+              <Workflow
+                n="05"
+                icon={
+                  <Users
+                    size={21}
+                  />
+                }
+                title="Teacher Management"
+                text="Add, approve and manage school teachers."
+                action="Open Teacher Management"
+                onClick={() =>
+                  openRoute("/teacher-management")
                 }
               />
 
             </div>
-
           </div>
-
 
           {/* SYSTEM SNAPSHOT */}
 
@@ -1363,9 +1839,7 @@ function AdminDashboard() {
             <button
               type="button"
               onClick={() =>
-                navigate(
-                  "/view-results"
-                )
+                openRoute("/view-results")
               }
               className="mt-5 w-full flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 hover:border-green-300 hover:text-green-700"
             >
@@ -1392,7 +1866,7 @@ function AdminDashboard() {
 
           {/* RECENT RESULTS */}
 
-          <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-[28px] shadow-sm overflow-hidden scroll-mt-28">
 
             <div className="p-6 flex items-center justify-between gap-4 border-b border-gray-100">
 
@@ -1417,9 +1891,7 @@ function AdminDashboard() {
               <button
                 type="button"
                 onClick={() =>
-                  navigate(
-                    "/view-results"
-                  )
+                  openRoute("/view-results")
                 }
                 className="text-sm font-semibold text-green-700 inline-flex items-center gap-1"
               >
@@ -1676,9 +2148,7 @@ function AdminDashboard() {
               <button
                 type="button"
                 onClick={() =>
-                  navigate(
-                    "/fee-management"
-                  )
+                  openRoute("/fee-management")
                 }
                 className="mt-5 w-full rounded-xl bg-white text-slate-900 py-3 font-semibold hover:bg-slate-100 inline-flex items-center justify-center gap-2"
               >
@@ -1738,6 +2208,510 @@ function AdminDashboard() {
 
 
 /* =========================================================
+   ADMIN ATTENDANCE PANEL
+========================================================= */
+
+function AttendanceAdminPanel({
+  attendance = {
+    totalRecords: 0,
+    present: 0,
+    absent: 0,
+    leave: 0,
+    percentage: 0,
+    todayRecords: 0,
+    todayPresent: 0,
+    todayAbsent: 0,
+    todayLeave: 0,
+    recentActivity: [],
+    byClass: [],
+    students: [],
+  },
+  teachers = [],
+  attendanceAccess = [],
+  onOpenAttendance,
+}) {
+  const [search, setSearch] = useState("");
+  const [classFilter, setClassFilter] = useState("ALL");
+
+  const classes = useMemo(() => {
+    const values = new Set(
+      (attendance.byClass ?? []).map(
+        (row) =>
+          `${row.className}${row.section ? `-${row.section}` : ""}`
+      )
+    );
+
+    return [...values].sort((a, b) => a.localeCompare(b));
+  }, [attendance.byClass]);
+
+  const filteredClasses = useMemo(() => {
+    const q = normalize(search);
+
+    return (attendance.byClass ?? []).filter((row) => {
+      const label =
+        `${row.className}${row.section ? `-${row.section}` : ""}`;
+
+      const matchesClass =
+        classFilter === "ALL" || label === classFilter;
+
+      const matchesSearch =
+        !q ||
+        normalize(row.className).includes(q) ||
+        normalize(row.section).includes(q);
+
+      return matchesClass && matchesSearch;
+    });
+  }, [attendance.byClass, classFilter, search]);
+
+  const filteredStudents = useMemo(() => {
+    const q = normalize(search);
+
+    return (attendance.students ?? []).filter((student) => {
+      if (!q) return true;
+
+      return (
+        normalize(student.studentName).includes(q) ||
+        normalize(student.enrollmentNo).includes(q) ||
+        normalize(student.className).includes(q) ||
+        normalize(student.section).includes(q)
+      );
+    });
+  }, [attendance.students, search]);
+
+  const downloadCsv = (rows, filename) => {
+    if (!rows.length) {
+      window.alert("No attendance data available for export.");
+      return;
+    }
+
+    const headers = [
+      "Student Name",
+      "Enrollment No",
+      "Class",
+      "Section",
+      "Total Records",
+      "Present",
+      "Absent",
+      "Leave",
+      "Attendance %",
+    ];
+
+    const csvRows = [
+      headers,
+      ...rows.map((row) => [
+        row.studentName,
+        row.enrollmentNo,
+        row.className,
+        row.section,
+        row.total,
+        row.present,
+        row.absent,
+        row.leave,
+        `${row.percentage}%`,
+      ]),
+    ];
+
+    const csv = csvRows
+      .map((row) =>
+        row
+          .map((value) => {
+            const text = String(value ?? "");
+            return `"${text.replaceAll('"', '""')}"`;
+          })
+          .join(",")
+      )
+      .join("\r\n");
+
+    const blob = new Blob(["\uFEFF" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-gray-100">
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <CalendarCheck2 size={21} className="text-indigo-600" />
+              <h2 className="text-xl font-bold text-gray-900">
+                Live Attendance Overview
+              </h2>
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                REAL-TIME
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-500 mt-1">
+              Attendance updates from teachers appear here automatically.
+              Use the search/filter tools below for class and student-level review.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsv(
+                  filteredStudents,
+                  `school-attendance-overall-${new Date()
+                    .toISOString()
+                    .slice(0, 10)}.csv`
+                )
+              }
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"
+            >
+              <Download size={16} />
+              Overall Excel / CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenAttendance}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-indigo-100 bg-indigo-50/50 text-indigo-700 text-sm font-bold hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
+            >
+              <ClipboardList size={16} />
+              Open Attendance Center
+            </button>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-[1fr_220px] gap-3 mt-5">
+          <div className="relative">
+            <Search
+              size={17}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search student, enrollment, class or section..."
+              className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
+            />
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          <select
+            value={classFilter}
+            onChange={(event) => setClassFilter(event.target.value)}
+            className="w-full py-3 px-3 rounded-xl border border-gray-200 bg-white outline-none"
+          >
+            <option value="ALL">All Classes</option>
+            {classes.map((className) => (
+              <option key={className} value={className}>
+                Class {className}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="p-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MiniAttendance
+          label="Today Present"
+          value={attendance.todayPresent}
+          cls="bg-emerald-50 text-emerald-700"
+        />
+
+        <MiniAttendance
+          label="Today Absent"
+          value={attendance.todayAbsent}
+          cls="bg-red-50 text-red-700"
+        />
+
+        <MiniAttendance
+          label="Today Leave"
+          value={attendance.todayLeave}
+          cls="bg-amber-50 text-amber-700"
+        />
+
+        <MiniAttendance
+          label="Overall"
+          value={`${attendance.percentage}%`}
+          cls="bg-indigo-50 text-indigo-700"
+        />
+      </div>
+
+      <div className="px-6 pb-6">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-bold text-gray-900">
+              Class-wise Attendance
+            </h3>
+            <p className="text-xs text-gray-500">
+              {filteredClasses.length} class/section records
+            </p>
+          </div>
+
+          {search && (
+            <span className="text-xs font-semibold text-gray-500">
+              Searching: {search}
+            </span>
+          )}
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-gray-100">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-4 py-3 font-bold text-gray-600">
+                  Class
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  Present
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  Absent
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  Leave
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  %
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-gray-100">
+              {filteredClasses.length ? (
+                filteredClasses.map((row) => (
+                  <tr key={`${row.className}-${row.section}`}>
+                    <td className="px-4 py-3 font-semibold text-gray-900">
+                      {row.className}
+                      {row.section ? `-${row.section}` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-center text-emerald-700 font-semibold">
+                      {row.present}
+                    </td>
+                    <td className="px-4 py-3 text-center text-red-700 font-semibold">
+                      {row.absent}
+                    </td>
+                    <td className="px-4 py-3 text-center text-amber-700 font-semibold">
+                      {row.leave}
+                    </td>
+                    <td className="px-4 py-3 text-center font-bold text-indigo-700">
+                      {row.percentage}%
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-4 py-10 text-center text-gray-500"
+                  >
+                    No attendance records found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="px-6 pb-6">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-bold text-gray-900">
+              Student Overall Attendance
+            </h3>
+            <p className="text-xs text-gray-500">
+              Searchable student-level calculation
+            </p>
+          </div>
+
+          <span className="text-xs font-semibold text-gray-500">
+            {filteredStudents.length} students
+          </span>
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-gray-100">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-4 py-3 font-bold text-gray-600">
+                  Student
+                </th>
+                <th className="text-left px-4 py-3 font-bold text-gray-600">
+                  Class
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  Total
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  P
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  A
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  L
+                </th>
+                <th className="text-center px-4 py-3 font-bold text-gray-600">
+                  %
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-gray-100">
+              {filteredStudents.slice(0, 100).map((student) => (
+                <tr key={String(student.studentId)}>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-gray-900">
+                      {student.studentName}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {student.enrollmentNo || "No enrollment"}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {student.className}
+                    {student.section ? `-${student.section}` : ""}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {student.total}
+                  </td>
+                  <td className="px-4 py-3 text-center text-emerald-700 font-semibold">
+                    {student.present}
+                  </td>
+                  <td className="px-4 py-3 text-center text-red-700 font-semibold">
+                    {student.absent}
+                  </td>
+                  <td className="px-4 py-3 text-center text-amber-700 font-semibold">
+                    {student.leave}
+                  </td>
+                  <td className="px-4 py-3 text-center font-bold text-indigo-700">
+                    {student.percentage}%
+                  </td>
+                </tr>
+              ))}
+
+              {!filteredStudents.length && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-4 py-10 text-center text-gray-500"
+                  >
+                    No student attendance records found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredStudents.length > 100 && (
+          <p className="text-xs text-gray-400 mt-3">
+            Showing first 100 students. Use the search field to narrow the list
+            before exporting.
+          </p>
+        )}
+      </div>
+
+      <div className="px-6 pb-6">
+        <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-emerald-600" />
+            <h3 className="font-bold text-gray-900">
+              Attendance Access Activity
+            </h3>
+          </div>
+
+          <p className="text-xs text-gray-500 mt-1">
+            {attendanceAccess.length} access records currently available.
+          </p>
+
+          <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              {
+                label: "Teachers",
+                value: teachers.length,
+                icon: <Users size={16} />,
+              },
+              {
+                label: "Class Teachers",
+                value: teachers.filter(
+                  (teacher) =>
+                    teacher.isClassTeacher === true
+                ).length,
+                icon: <UserCheck size={16} />,
+              },
+              {
+                label: "Active Access",
+                value: attendanceAccess.filter(
+                  (access) =>
+                    String(access.status ?? "").toUpperCase() ===
+                    "ACTIVE"
+                ).length,
+                icon: <ShieldCheck size={16} />,
+              },
+              {
+                label: "Revoked",
+                value: attendanceAccess.filter(
+                  (access) =>
+                    String(access.status ?? "").toUpperCase() ===
+                    "REVOKED"
+                ).length,
+                icon: <Clock4 size={16} />,
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="bg-white rounded-xl border border-gray-100 p-4"
+              >
+                <div className="flex items-center gap-2 text-gray-500 text-xs font-semibold">
+                  {item.icon}
+                  {item.label}
+                </div>
+                <p className="text-xl font-black text-gray-900 mt-2">
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MiniAttendance({ label, value, cls }) {
+  return (
+    <div className={`rounded-2xl p-4 ${cls}`}>
+      <p className="text-xs font-semibold opacity-75">
+        {label}
+      </p>
+      <p className="text-2xl font-black mt-1">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+
+/* =========================================================
    METRIC
 ========================================================= */
 
@@ -1749,67 +2723,50 @@ function Metric({
   cls,
   onClick,
 }) {
+  const accentText =
+    String(cls || "").match(/text-[a-z]+-\\d+/)?.[0] ||
+    "text-green-700";
 
   return (
-
     <button
       type="button"
       onClick={onClick}
-      className="text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-green-200 transition group"
+      aria-label={`Open ${title}`}
+      className="group relative w-full text-left overflow-hidden bg-gradient-to-br from-white via-white to-gray-50 border border-gray-200 rounded-3xl p-5 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-green-300 active:scale-[0.985] transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-200"
     >
+      <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-green-100/50 blur-2xl transition-transform duration-500 group-hover:scale-150" />
 
-      <div className="flex items-start justify-between gap-4">
-
-        <div>
-
-          <p className="text-sm font-medium text-gray-500">
-
+      <div className="relative flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className={`text-sm font-bold ${accentText}`}>
             {title}
-
           </p>
 
-
-          <p className="text-2xl font-bold text-gray-900 mt-2">
-
+          <p className="text-2xl font-black text-gray-900 mt-2">
             {value}
-
           </p>
 
-
-          <p className="text-xs text-gray-400 mt-1">
-
+          <p className="text-xs text-gray-500 mt-1">
             {helper}
-
           </p>
-
         </div>
-
 
         <div
-          className={`w-10 h-10 rounded-xl flex items-center justify-center ${cls}`}
+          className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center ${cls} shadow-sm ring-1 ring-black/5 transition-transform duration-300 group-hover:scale-110`}
         >
-
           {icon}
-
         </div>
-
       </div>
 
-
-      <div className="mt-4 text-xs font-semibold text-gray-400 group-hover:text-green-700 flex items-center gap-1">
-
-        Open
-
+      <div className={`mt-4 text-xs font-bold ${accentText} flex items-center gap-1`}>
+        Open {title}
         <ArrowRight
-          size={13}
+          size={14}
+          className="transition-transform duration-200 group-hover:translate-x-1"
         />
-
       </div>
-
     </button>
-
   );
-
 }
 
 
@@ -1826,82 +2783,66 @@ function Workflow({
   onClick,
   alert = false,
 }) {
-
   return (
-
-    <div
-      className={`rounded-2xl border p-5 ${
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Open ${title}`}
+      className={`group w-full text-left rounded-2xl border p-5 transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-green-200 ${
         alert
-          ? "border-amber-300 bg-amber-50/50"
-          : "border-gray-200 bg-gray-50/50"
+          ? "border-amber-300 bg-amber-50/50 hover:border-amber-400"
+          : "border-gray-200 bg-gray-50/50 hover:border-green-300 hover:bg-white"
       }`}
     >
-
       <div className="flex items-start justify-between">
-
         <div className="flex items-center gap-3">
-
-          <span className="text-xs font-bold text-gray-400">
-
+          <span className="text-xs font-black text-gray-400">
             {n}
-
           </span>
 
-
-          <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 text-green-700 flex items-center justify-center">
-
+          <div
+            className={`w-11 h-11 rounded-xl bg-white border flex items-center justify-center shadow-sm ${
+              alert
+                ? "border-amber-200 text-amber-700"
+                : "border-green-100 text-green-700"
+            }`}
+          >
             {icon}
-
           </div>
-
         </div>
 
-
         {alert && (
-
-          <span className="text-[11px] font-bold uppercase text-amber-700">
-
+          <span className="text-[11px] font-black uppercase tracking-wide text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full">
             Action needed
-
           </span>
-
         )}
-
       </div>
 
-
-      <h3 className="font-bold text-gray-900 mt-4">
-
+      <h3
+        className={`font-black mt-4 ${
+          alert ? "text-amber-800" : "text-green-800"
+        }`}
+      >
         {title}
-
       </h3>
 
-
       <p className="text-sm text-gray-500 mt-1 min-h-[40px]">
-
         {text}
-
       </p>
 
-
-      <button
-        type="button"
-        onClick={onClick}
-        className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-green-700"
+      <div
+        className={`mt-4 inline-flex items-center gap-2 text-sm font-bold ${
+          alert ? "text-amber-700" : "text-green-700"
+        }`}
       >
-
         {action}
-
         <ArrowRight
           size={15}
+          className="transition-transform duration-200 group-hover:translate-x-1"
         />
-
-      </button>
-
-    </div>
-
+      </div>
+    </button>
   );
-
 }
 
 

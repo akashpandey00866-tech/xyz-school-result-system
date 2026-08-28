@@ -8,7 +8,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "../config/firebase";
 import { useAuth } from "../context/AuthContext";
 
-export default function ProtectedAdminRoute({
+export default function ProtectedStudentRoute({
   children,
 }) {
   const location = useLocation();
@@ -32,11 +32,7 @@ export default function ProtectedAdminRoute({
       return undefined;
     }
 
-    /*
-      Create a history guard. When the user presses Browser Back
-      from the authenticated admin portal, destroy the session and
-      force a fresh /login instead of restoring a protected page.
-    */
+    /* Browser Back = terminate portal session. */
     const currentUrl =
       window.location.href;
 
@@ -59,7 +55,7 @@ export default function ProtectedAdminRoute({
         await signOut(auth);
       } catch (error) {
         console.warn(
-          "Admin back-logout cleanup:",
+          "Student back-logout cleanup:",
           error
         );
       } finally {
@@ -69,7 +65,8 @@ export default function ProtectedAdminRoute({
             replace: true,
             state: {
               reason: "back",
-              from: location.pathname,
+              from:
+                location.pathname,
             },
           }
         );
@@ -104,28 +101,19 @@ export default function ProtectedAdminRoute({
         <div className="text-center">
           <div className="mx-auto h-12 w-12 rounded-full border-4 border-white/10 border-t-cyan-400 animate-spin" />
           <p className="mt-5 text-lg font-black text-white">
-            Securing Admin Portal
+            Securing Student Portal
           </p>
           <p className="mt-2 text-sm text-slate-400">
-            Verifying your school administrator account…
+            Verifying your school account…
           </p>
         </div>
       </div>
     );
   }
 
-  const adminLikeRoles = [
-    "admin",
-    "principal",
-    "accountant",
-    "staff",
-  ];
-
   if (
     !user ||
-    !adminLikeRoles.includes(
-      role
-    ) ||
+    role !== "student" ||
     isAccountActive === false
   ) {
     return (
