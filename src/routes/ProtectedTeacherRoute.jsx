@@ -1,7 +1,8 @@
+import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-export default function ProtectedStudentRoute({
+export default function ProtectedTeacherRoute({
   children,
 }) {
   const location = useLocation();
@@ -14,11 +15,12 @@ export default function ProtectedStudentRoute({
     isAccountActive,
   } = useAuth();
 
-  /* ============================================
-     AUTH CHECK LOADING
-     Firebase/session verify hone tak login par
-     redirect nahi karna.
-  ============================================ */
+  /* =========================================================
+     SESSION RESTORING
+     
+     Firebase session/profile check complete hone tak
+     login par redirect nahi karna.
+  ========================================================= */
 
   if (
     loading ||
@@ -46,15 +48,15 @@ export default function ProtectedStudentRoute({
             }}
           />
 
-          <p
+          <h2
             className="mt-5 text-lg font-black"
             style={{
               color:
                 "var(--school-text, #0f172a)",
             }}
           >
-            Securing Student Portal
-          </p>
+            Securing Teacher Portal
+          </h2>
 
           <p
             className="mt-2 text-sm"
@@ -63,7 +65,7 @@ export default function ProtectedStudentRoute({
                 "var(--school-muted, #64748b)",
             }}
           >
-            Verifying your school account…
+            Restoring your secure school session…
           </p>
 
         </div>
@@ -71,16 +73,15 @@ export default function ProtectedStudentRoute({
     );
   }
 
-  /* ============================================
-     NOT AUTHENTICATED
+  /* =========================================================
+     AUTHENTICATION
      
-     IMPORTANT:
-     No signOut here.
-     No browser-history manipulation.
+     No signOut.
+     No popstate.
+     No history manipulation.
      
-     User only gets redirected when there is
-     genuinely no Firebase session.
-  ============================================ */
+     Only redirect when there is genuinely no session.
+  ========================================================= */
 
   if (!user) {
     return (
@@ -90,17 +91,22 @@ export default function ProtectedStudentRoute({
         state={{
           from:
             location.pathname +
-            location.search,
+            location.search +
+            location.hash,
+          reason:
+            "authentication-required",
         }}
       />
     );
   }
 
-  /* ============================================
-     WRONG ROLE
-  ============================================ */
+  /* =========================================================
+     ROLE PROTECTION
+  ========================================================= */
 
-  if (role !== "student") {
+  if (
+    role !== "teacher"
+  ) {
     return (
       <Navigate
         to="/login"
@@ -108,7 +114,8 @@ export default function ProtectedStudentRoute({
         state={{
           from:
             location.pathname +
-            location.search,
+            location.search +
+            location.hash,
           reason:
             "unauthorized-role",
         }}
@@ -116,9 +123,9 @@ export default function ProtectedStudentRoute({
     );
   }
 
-  /* ============================================
-     ACCOUNT DISABLED / INACTIVE
-  ============================================ */
+  /* =========================================================
+     ACCOUNT STATUS
+  ========================================================= */
 
   if (
     isAccountActive === false
@@ -130,7 +137,8 @@ export default function ProtectedStudentRoute({
         state={{
           from:
             location.pathname +
-            location.search,
+            location.search +
+            location.hash,
           reason:
             "account-inactive",
         }}
@@ -138,9 +146,9 @@ export default function ProtectedStudentRoute({
     );
   }
 
-  /* ============================================
-     AUTHORIZED STUDENT
-  ============================================ */
+  /* =========================================================
+     AUTHORIZED TEACHER
+  ========================================================= */
 
   return children;
 }

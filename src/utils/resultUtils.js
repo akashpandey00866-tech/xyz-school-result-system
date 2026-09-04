@@ -1,514 +1,835 @@
-/* ==========================================================
+/* =========================================================
    RESULT UTILS
-   Dynamic Result Management System
-========================================================== */
+   Advanced Dynamic Result Management Engine
 
-export const DEFAULT_SETTINGS = {
+   FEATURES
+   ---------------------------------------------------------
+   • Safe marks validation
+   • Theory + Practical calculation
+   • Subject pass/fail
+   • Overall result calculation
+   • Percentage / Grade / Division
+   • Performance analysis
+   • Teacher remarks
+   • Ranking
+   • Merit list
+   • Class statistics
+   • Subject statistics
+   • Publish-readiness validation
+   • PDF preparation
+   • Backward-compatible exports
+========================================================= */
 
+
+/* =========================================================
+   DEFAULT SETTINGS
+========================================================= */
+
+export const DEFAULT_SETTINGS = Object.freeze({
   passingPercentage: 33,
-
   graceMarks: 0,
+});
 
-};
 
-/* ==========================================================
-   VALIDATE MARKS
-========================================================== */
+/* =========================================================
+   CONSTANTS
+========================================================= */
 
-export function validateMarks(
+const MAX_PERCENTAGE = 100;
+const MIN_PERCENTAGE = 0;
 
+const MAX_REMARK_LENGTH = 1000;
+
+
+/* =========================================================
+   INTERNAL HELPERS
+========================================================= */
+
+function toNumber(
   value,
-
-  maximumMarks
-
+  fallback = 0
 ) {
+  const number = Number(value);
 
-  value = Number(value);
-
-  maximumMarks = Number(maximumMarks || 0);
-
-  if (isNaN(value)) return 0;
-
-  if (value < 0) return 0;
-
-  if (value > maximumMarks)
-
-    return maximumMarks;
-
-  return value;
-
+  return Number.isFinite(number)
+    ? number
+    : fallback;
 }
 
-/* ==========================================================
-   SUBJECT TOTAL
-========================================================== */
 
-export function calculateSubjectTotal(
-
-  theory,
-
-  practical
-
+function clamp(
+  value,
+  min,
+  max
 ) {
-
-  theory = Number(theory || 0);
-
-  practical = Number(practical || 0);
-
-  return theory + practical;
-
+  return Math.min(
+    max,
+    Math.max(min, value)
+  );
 }
 
-/* ==========================================================
-   SUBJECT STATUS
-========================================================== */
 
-export function calculateSubjectStatus(
-
-  subject,
-
-  theory,
-
-  practical
-
+function cleanString(
+  value
 ) {
-
-  theory = validateMarks(
-
-    theory,
-
-    subject.theoryMarks
-
-  );
-
-  practical = validateMarks(
-
-    practical,
-
-    subject.practicalMarks
-
-  );
-
-  const passTheory =
-
-    Number(subject.passingTheory || 0);
-
-  const passPractical =
-
-    Number(subject.passingPractical || 0);
-
   if (
-
-    theory >= passTheory &&
-
-    practical >= passPractical
-
+    value === null ||
+    value === undefined
   ) {
-
-    return "PASS";
-
+    return "";
   }
 
-  return "FAIL";
-
+  return String(value).trim();
 }
 
-/* ==========================================================
+
+function round(
+  value,
+  decimals = 2
+) {
+  const factor =
+    10 ** decimals;
+
+  return (
+    Math.round(
+      (
+        toNumber(value) *
+        factor
+      ) +
+        Number.EPSILON
+    ) /
+    factor
+  );
+}
+
+
+function getSubjectCode(
+  subject
+) {
+  return cleanString(
+    subject?.subjectCode ||
+    subject?.code ||
+    subject?.id
+  );
+}
+
+
+function getSubjectName(
+  subject
+) {
+  return cleanString(
+    subject?.subjectName ||
+    subject?.name ||
+    subject?.label ||
+    getSubjectCode(subject)
+  );
+}
+
+
+function getFormMarks(
+  formData,
+  subject
+) {
+  const code =
+    getSubjectCode(
+      subject
+    );
+
+  return (
+    formData?.[code] ||
+    {}
+  );
+}
+
+
+/* =========================================================
+   VALIDATE SINGLE MARK
+========================================================= */
+
+export function validateMarks(
+  value,
+  maximumMarks
+) {
+  const max =
+    Math.max(
+      0,
+      toNumber(
+        maximumMarks
+      )
+    );
+
+  /*
+   * Empty input is treated as 0.
+   */
+
+  if (
+    value === "" ||
+    value === null ||
+    value === undefined
+  ) {
+    return 0;
+  }
+
+
+  const number =
+    Number(value);
+
+
+  /*
+   * Invalid number.
+   */
+
+  if (
+    !Number.isFinite(number)
+  ) {
+    return 0;
+  }
+
+
+  /*
+   * Negative marks are not allowed.
+   */
+
+  if (
+    number < 0
+  ) {
+    return 0;
+  }
+
+
+  /*
+   * Never allow marks above maximum.
+   */
+
+  if (
+    number > max
+  ) {
+    return max;
+  }
+
+
+  return number;
+}
+
+
+/* =========================================================
+   SUBJECT TOTAL
+========================================================= */
+
+export function calculateSubjectTotal(
+  theory,
+  practical
+) {
+  return (
+    toNumber(theory) +
+    toNumber(practical)
+  );
+}
+
+
+/* =========================================================
+   SUBJECT STATUS
+========================================================= */
+
+export function calculateSubjectStatus(
+  subject,
+  theory,
+  practical
+) {
+  if (!subject) {
+    return "FAIL";
+  }
+
+
+  const theoryMaximum =
+    Math.max(
+      0,
+      toNumber(
+        subject.theoryMarks
+      )
+    );
+
+
+  const practicalMaximum =
+    Math.max(
+      0,
+      toNumber(
+        subject.practicalMarks
+      )
+    );
+
+
+  const safeTheory =
+    validateMarks(
+      theory,
+      theoryMaximum
+    );
+
+
+  const safePractical =
+    validateMarks(
+      practical,
+      practicalMaximum
+    );
+
+
+  /*
+   * Passing thresholds.
+   *
+   * If a component does not exist,
+   * it should not become a mandatory
+   * zero-mark component.
+   */
+
+  const theoryPass =
+    theoryMaximum > 0
+      ? Math.max(
+          0,
+          toNumber(
+            subject.passingTheory
+          )
+        )
+      : 0;
+
+
+  const practicalPass =
+    practicalMaximum > 0
+      ? Math.max(
+          0,
+          toNumber(
+            subject.passingPractical
+          )
+        )
+      : 0;
+
+
+  const theoryPassed =
+    theoryMaximum <= 0 ||
+    safeTheory >= theoryPass;
+
+
+  const practicalPassed =
+    practicalMaximum <= 0 ||
+    safePractical >= practicalPass;
+
+
+  return (
+    theoryPassed &&
+    practicalPassed
+  )
+    ? "PASS"
+    : "FAIL";
+}
+
+
+/* =========================================================
    FAILED SUBJECTS
-========================================================== */
+========================================================= */
 
 export function calculateFailedSubjects(
-
-  subjects,
-
-  formData
-
+  subjects = [],
+  formData = {}
 ) {
+  if (
+    !Array.isArray(subjects)
+  ) {
+    return [];
+  }
+
 
   const failedSubjects = [];
 
-  subjects.forEach((subject) => {
 
-    const theory = Number(
+  subjects.forEach(
+    (subject) => {
 
-      formData[subject.subjectCode]?.theory || 0
+      const marks =
+        getFormMarks(
+          formData,
+          subject
+        );
 
-    );
 
-    const practical = Number(
+      const theory =
+        validateMarks(
+          marks.theory,
+          subject.theoryMarks
+        );
 
-      formData[subject.subjectCode]?.practical || 0
 
-    );
+      const practical =
+        validateMarks(
+          marks.practical,
+          subject.practicalMarks
+        );
 
-    const status = calculateSubjectStatus(
 
-      subject,
+      const status =
+        calculateSubjectStatus(
+          subject,
+          theory,
+          practical
+        );
 
-      theory,
 
-      practical
+      if (
+        status === "FAIL"
+      ) {
+        failedSubjects.push({
+          subjectCode:
+            getSubjectCode(
+              subject
+            ),
 
-    );
+          subjectName:
+            getSubjectName(
+              subject
+            ),
 
-    if (status === "FAIL") {
+          theory,
 
-      failedSubjects.push({
+          practical,
 
-        subjectCode:
+          total:
+            calculateSubjectTotal(
+              theory,
+              practical
+            ),
 
-          subject.subjectCode,
+          maximumMarks:
+            toNumber(
+              subject.totalMarks
+            ),
 
-        subjectName:
-
-          subject.subjectName,
-
-        theory,
-
-        practical,
-
-      });
-
+          status,
+        });
+      }
     }
+  );
 
-  });
 
   return failedSubjects;
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    TOTAL MARKS
-========================================================== */
+========================================================= */
 
 export function calculateTotals(
-
-  subjects,
-
-  formData
-
+  subjects = [],
+  formData = {}
 ) {
+  if (
+    !Array.isArray(subjects)
+  ) {
+    return {
+      totalSubjects: 0,
+      obtainedMarks: 0,
+      maximumMarks: 0,
+    };
+  }
+
 
   let obtainedMarks = 0;
 
   let maximumMarks = 0;
 
-  subjects.forEach((subject) => {
 
-    const theory = Number(
+  subjects.forEach(
+    (subject) => {
 
-      formData[subject.subjectCode]?.theory || 0
+      const marks =
+        getFormMarks(
+          formData,
+          subject
+        );
 
-    );
 
-    const practical = Number(
+      const theory =
+        validateMarks(
+          marks.theory,
+          subject.theoryMarks
+        );
 
-      formData[subject.subjectCode]?.practical || 0
 
-    );
+      const practical =
+        validateMarks(
+          marks.practical,
+          subject.practicalMarks
+        );
 
-    obtainedMarks +=
 
-      calculateSubjectTotal(
+      obtainedMarks +=
+        calculateSubjectTotal(
+          theory,
+          practical
+        );
 
-        theory,
 
-        practical
+      /*
+       * Prefer configured totalMarks.
+       *
+       * Fallback:
+       * theory + practical.
+       */
 
-      );
+      const configuredMaximum =
+        toNumber(
+          subject.totalMarks
+        );
 
-    maximumMarks += Number(
 
-      subject.totalMarks || 0
+      const calculatedMaximum =
+        toNumber(
+          subject.theoryMarks
+        ) +
+        toNumber(
+          subject.practicalMarks
+        );
 
-    );
 
-  });
-
-  return {
-
-    totalSubjects:
-
-      subjects.length,
-
-    obtainedMarks,
-
-    maximumMarks,
-
-  };
-
-}
-/* ==========================================================
-   PERCENTAGE
-========================================================== */
-
-export function calculatePercentage(
-
-  obtainedMarks,
-
-  maximumMarks
-
-) {
-
-  if (Number(maximumMarks) === 0)
-
-    return 0;
-
-  return Number(
-
-    (
-
-      (Number(obtainedMarks) /
-
-        Number(maximumMarks)) *
-
-      100
-
-    ).toFixed(2)
-
+      maximumMarks +=
+        configuredMaximum > 0
+          ? configuredMaximum
+          : calculatedMaximum;
+    }
   );
 
+
+  return {
+    totalSubjects:
+      subjects.length,
+
+    obtainedMarks:
+      round(
+        obtainedMarks
+      ),
+
+    maximumMarks:
+      round(
+        maximumMarks
+      ),
+  };
 }
 
-/* ==========================================================
+
+/* =========================================================
+   PERCENTAGE
+========================================================= */
+
+export function calculatePercentage(
+  obtainedMarks,
+  maximumMarks
+) {
+  const obtained =
+    toNumber(
+      obtainedMarks
+    );
+
+
+  const maximum =
+    toNumber(
+      maximumMarks
+    );
+
+
+  if (
+    maximum <= 0
+  ) {
+    return 0;
+  }
+
+
+  const percentage =
+    (
+      obtained /
+      maximum
+    ) *
+    100;
+
+
+  return round(
+    clamp(
+      percentage,
+      MIN_PERCENTAGE,
+      MAX_PERCENTAGE
+    )
+  );
+}
+
+
+/* =========================================================
    GRADE
-========================================================== */
+========================================================= */
 
 export function calculateGrade(
-
   percentage
-
 ) {
+  const value =
+    clamp(
+      toNumber(
+        percentage
+      ),
+      0,
+      100
+    );
 
-  percentage = Number(percentage);
 
-  if (percentage >= 90) return "A+";
+  if (value >= 90)
+    return "A+";
 
-  if (percentage >= 80) return "A";
+  if (value >= 80)
+    return "A";
 
-  if (percentage >= 70) return "B+";
+  if (value >= 70)
+    return "B+";
 
-  if (percentage >= 60) return "B";
+  if (value >= 60)
+    return "B";
 
-  if (percentage >= 50) return "C";
+  if (value >= 50)
+    return "C";
 
-  if (percentage >= 40) return "D";
+  if (value >= 40)
+    return "D";
 
   return "F";
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    DIVISION
-========================================================== */
+========================================================= */
 
 export function calculateDivision(
-
   percentage
-
 ) {
+  const value =
+    clamp(
+      toNumber(
+        percentage
+      ),
+      0,
+      100
+    );
 
-  percentage = Number(percentage);
 
-  if (percentage >= 60)
-
+  if (value >= 60)
     return "First Division";
 
-  if (percentage >= 45)
-
+  if (value >= 45)
     return "Second Division";
 
-  if (percentage >= 33)
-
+  if (value >= 33)
     return "Third Division";
 
   return "Failed";
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    RESULT STATUS
-========================================================== */
+========================================================= */
 
 export function calculateResultStatus(
-
-  failedSubjects
-
+  failedSubjects = []
 ) {
-
-  return failedSubjects.length === 0
-
+  return (
+    Array.isArray(
+      failedSubjects
+    ) &&
+    failedSubjects.length === 0
+  )
     ? "PASS"
-
     : "FAIL";
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    PERFORMANCE
-========================================================== */
+========================================================= */
 
 export function calculatePerformance(
-
   percentage
-
 ) {
+  let value =
+    Number(
+      percentage
+    );
 
-  percentage = Number(percentage);
 
-  if (percentage >= 90) {
+  /*
+   * Protect against:
+   * NaN
+   * Infinity
+   * undefined
+   * null
+   */
 
+  if (
+    !Number.isFinite(value)
+  ) {
+    value = 0;
+  }
+
+
+  /*
+   * Keep percentage valid.
+   */
+
+  value =
+    clamp(
+      value,
+      0,
+      100
+    );
+
+
+  value =
+    round(
+      value
+    );
+
+
+  if (value >= 90) {
     return {
-
       level: "Outstanding",
-
       color: "green",
-
+      percentage: value,
+      score: 5,
+      badge: "TOP PERFORMANCE",
     };
-
   }
 
-  if (percentage >= 80) {
 
+  if (value >= 80) {
     return {
-
       level: "Excellent",
-
       color: "green",
-
+      percentage: value,
+      score: 4,
+      badge: "EXCELLENT",
     };
-
   }
 
-  if (percentage >= 70) {
 
+  if (value >= 70) {
     return {
-
       level: "Very Good",
-
       color: "blue",
-
+      percentage: value,
+      score: 4,
+      badge: "VERY GOOD",
     };
-
   }
 
-  if (percentage >= 60) {
 
+  if (value >= 60) {
     return {
-
       level: "Good",
-
       color: "blue",
-
+      percentage: value,
+      score: 3,
+      badge: "GOOD",
     };
-
   }
 
-  if (percentage >= 50) {
 
+  if (value >= 50) {
     return {
-
       level: "Average",
-
       color: "orange",
-
+      percentage: value,
+      score: 2,
+      badge: "AVERAGE",
     };
-
   }
 
-  if (percentage >= 33) {
 
+  if (value >= 33) {
     return {
-
       level: "Needs Improvement",
-
       color: "yellow",
-
+      percentage: value,
+      score: 1,
+      badge: "IMPROVEMENT NEEDED",
     };
-
   }
+
 
   return {
-
     level: "Poor",
-
     color: "red",
-
+    percentage: value,
+    score: 0,
+    badge: "NEEDS ATTENTION",
   };
-
 }
-/* ==========================================================
+
+
+/* =========================================================
    GENERATE COMPLETE RESULT
-========================================================== */
+========================================================= */
 
 export function generateResult(
+  subjects = [],
+  formData = {}
+) {
+  const safeSubjects =
+    Array.isArray(
+      subjects
+    )
+      ? subjects
+      : [];
 
-  subjects,
 
-  formData
+  const totals =
+    calculateTotals(
+      safeSubjects,
+      formData
+    );
 
-){
 
-  const totals = calculateTotals(
+  const percentage =
+    calculatePercentage(
+      totals.obtainedMarks,
+      totals.maximumMarks
+    );
 
-    subjects,
-
-    formData
-
-  );
-
-  const percentage = calculatePercentage(
-
-    totals.obtainedMarks,
-
-    totals.maximumMarks
-
-  );
 
   const failedSubjects =
-
     calculateFailedSubjects(
-
-      subjects,
-
+      safeSubjects,
       formData
-
     );
+
 
   const status =
-
     calculateResultStatus(
-
       failedSubjects
-
     );
+
 
   const grade =
-
     calculateGrade(
-
       percentage
-
     );
+
 
   const division =
-
     calculateDivision(
-
       percentage
-
     );
+
 
   const performance =
-
     calculatePerformance(
-
       percentage
-
     );
 
-  return {
 
+  return {
     ...totals,
 
     percentage,
@@ -524,587 +845,1188 @@ export function generateResult(
     failedSubjects,
 
     failedCount:
-
       failedSubjects.length,
-
   };
-
 }
 
-/* ==========================================================
-   RESET FORM
-========================================================== */
+
+/* =========================================================
+   RESET RESULT FORM
+========================================================= */
 
 export function resetResultForm(
-
-  subjects
-
+  subjects = []
 ) {
-
   const form = {};
 
-  subjects.forEach((subject) => {
 
-    form[subject.subjectCode] = {
+  if (
+    !Array.isArray(subjects)
+  ) {
+    return form;
+  }
 
-      theory: "",
 
-      practical: "",
+  subjects.forEach(
+    (subject) => {
 
-    };
+      const code =
+        getSubjectCode(
+          subject
+        );
 
-  });
+
+      if (!code) {
+        return;
+      }
+
+
+      form[code] = {
+        theory: "",
+        practical: "",
+      };
+    }
+  );
+
 
   return form;
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    RESULT SUMMARY
-========================================================== */
+========================================================= */
 
 export function generateResultSummary(
-
-  result
-
+  result = {}
 ) {
-
   return {
-
     totalSubjects:
-
-      result.totalSubjects,
+      toNumber(
+        result.totalSubjects
+      ),
 
     obtainedMarks:
-
-      result.obtainedMarks,
+      toNumber(
+        result.obtainedMarks
+      ),
 
     maximumMarks:
-
-      result.maximumMarks,
+      toNumber(
+        result.maximumMarks
+      ),
 
     percentage:
-
-      result.percentage,
+      round(
+        result.percentage
+      ),
 
     grade:
-
-      result.grade,
+      result.grade ||
+      "F",
 
     division:
-
-      result.division,
+      result.division ||
+      "Failed",
 
     status:
-
-      result.status,
+      result.status ||
+      "FAIL",
 
     failedSubjects:
-
-      result.failedSubjects,
+      Array.isArray(
+        result.failedSubjects
+      )
+        ? result.failedSubjects
+        : [],
 
     failedCount:
-
-      result.failedCount,
+      toNumber(
+        result.failedCount
+      ),
 
     performance:
-
-      result.performance,
-
+      result.performance ||
+      calculatePerformance(
+        result.percentage
+      ),
   };
-
 }
-/* ==========================================================
+
+
+/* =========================================================
    TEACHER REMARKS
-========================================================== */
+========================================================= */
 
 export function generateTeacherRemarks(
-
-  result
-
+  result = {}
 ) {
+  const status =
+    cleanString(
+      result.status
+    ).toUpperCase();
 
-  if (result.status === "FAIL") {
 
-    if (result.failedCount >= 3) {
+  const percentage =
+    toNumber(
+      result.percentage
+    );
 
+
+  const failedCount =
+    toNumber(
+      result.failedCount
+    );
+
+
+  if (
+    status === "FAIL"
+  ) {
+
+    if (
+      failedCount >= 3
+    ) {
       return "Needs Immediate Academic Improvement.";
-
     }
 
+
+    if (
+      failedCount === 2
+    ) {
+      return "Needs focused improvement in weak subjects.";
+    }
+
+
     return "Work harder in weak subjects.";
-
   }
 
-  if (result.percentage >= 90) {
 
+  if (
+    percentage >= 90
+  ) {
     return "Outstanding Performance.";
-
   }
 
-  if (result.percentage >= 80) {
 
+  if (
+    percentage >= 80
+  ) {
     return "Excellent Performance.";
-
   }
 
-  if (result.percentage >= 70) {
 
+  if (
+    percentage >= 70
+  ) {
     return "Very Good Performance.";
-
   }
 
-  if (result.percentage >= 60) {
 
+  if (
+    percentage >= 60
+  ) {
     return "Good Performance.";
-
   }
 
-  if (result.percentage >= 50) {
 
+  if (
+    percentage >= 50
+  ) {
     return "Average Performance.";
-
   }
+
 
   return "Needs Improvement.";
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    RANK CALCULATION
-========================================================== */
+========================================================= */
 
 export function calculateRanks(
-
   results = []
-
 ) {
+  if (
+    !Array.isArray(results)
+  ) {
+    return [];
+  }
 
-  const list = [...results];
 
-  list.sort((a, b) => {
+  /*
+   * Clone objects so the original
+   * Firestore/UI array is not mutated.
+   */
 
-    if (b.percentage !== a.percentage)
+  const list =
+    results.map(
+      (item) => ({
+        ...item,
+      })
+    );
 
-      return b.percentage - a.percentage;
 
-    return b.obtainedMarks - a.obtainedMarks;
+  list.sort(
+    (a, b) => {
 
-  });
+      const percentageA =
+        toNumber(
+          a.percentage
+        );
+
+      const percentageB =
+        toNumber(
+          b.percentage
+        );
+
+
+      if (
+        percentageB !==
+        percentageA
+      ) {
+        return (
+          percentageB -
+          percentageA
+        );
+      }
+
+
+      const obtainedA =
+        toNumber(
+          a.obtainedMarks
+        );
+
+      const obtainedB =
+        toNumber(
+          b.obtainedMarks
+        );
+
+
+      return (
+        obtainedB -
+        obtainedA
+      );
+    }
+  );
+
 
   let rank = 1;
 
-  list.forEach((student, index) => {
 
-    if (student.status === "FAIL") {
+  list.forEach(
+    (student, index) => {
 
-      student.rank = "-";
+      const status =
+        cleanString(
+          student.status
+        ).toUpperCase();
 
-      return;
 
-    }
-
-    if (index > 0) {
+      /*
+       * Failed students do not receive
+       * a merit rank.
+       */
 
       if (
-
-        list[index].percentage !==
-
-        list[index - 1].percentage ||
-
-        list[index].obtainedMarks !==
-
-        list[index - 1].obtainedMarks
-
+        status === "FAIL"
       ) {
-
-        rank = index + 1;
-
+        student.rank = "-";
+        return;
       }
 
+
+      if (
+        index > 0
+      ) {
+
+        const previous =
+          list[index - 1];
+
+
+        const currentPercentage =
+          toNumber(
+            student.percentage
+          );
+
+        const previousPercentage =
+          toNumber(
+            previous.percentage
+          );
+
+
+        const currentObtained =
+          toNumber(
+            student.obtainedMarks
+          );
+
+        const previousObtained =
+          toNumber(
+            previous.obtainedMarks
+          );
+
+
+        if (
+          currentPercentage !==
+            previousPercentage ||
+          currentObtained !==
+            previousObtained
+        ) {
+          rank =
+            index + 1;
+        }
+      }
+
+
+      student.rank =
+        rank;
     }
-
-    student.rank = rank;
-
-  });
-
-  return list;
-
-}
-
-/* ==========================================================
-   MERIT LIST
-========================================================== */
-
-export function generateMeritList(
-
-  results = []
-
-) {
-
-  const ranked = calculateRanks(results);
-
-  const passStudents = ranked.filter(
-
-    (student) =>
-
-      student.status === "PASS"
-
   );
 
+
+  return list;
+}
+
+
+/* =========================================================
+   MERIT LIST
+========================================================= */
+
+export function generateMeritList(
+  results = []
+) {
+  const ranked =
+    calculateRanks(
+      results
+    );
+
+
+  const passStudents =
+    ranked.filter(
+      (student) =>
+        cleanString(
+          student.status
+        ).toUpperCase() ===
+        "PASS"
+    );
+
+
   return {
-
     topper:
-
-      passStudents[0] || null,
+      passStudents[0] ||
+      null,
 
     topThree:
-
-      passStudents.slice(0, 3),
+      passStudents.slice(
+        0,
+        3
+      ),
 
     topTen:
-
-      passStudents.slice(0, 10),
+      passStudents.slice(
+        0,
+        10
+      ),
 
     totalStudents:
-
       ranked.length,
 
     totalPass:
-
       passStudents.length,
 
     totalFail:
-
       ranked.length -
-
       passStudents.length,
-
   };
-
 }
-/* ==========================================================
+
+
+/* =========================================================
    CLASS STATISTICS
-========================================================== */
+========================================================= */
 
 export function generateClassStatistics(
-
   results = []
-
 ) {
-
-  if (!results.length) {
-
+  if (
+    !Array.isArray(results) ||
+    results.length === 0
+  ) {
     return {
-
       totalStudents: 0,
-
       totalPass: 0,
-
       totalFail: 0,
-
       highestPercentage: 0,
-
       lowestPercentage: 0,
-
       averagePercentage: 0,
-
+      passPercentage: 0,
       topper: null,
-
     };
-
   }
 
-  const passStudents = results.filter(
 
-    (student) =>
+  const normalized =
+    results.map(
+      (student) => ({
+        ...student,
 
-      student.status === "PASS"
+        percentage:
+          toNumber(
+            student.percentage
+          ),
 
-  );
+        obtainedMarks:
+          toNumber(
+            student.obtainedMarks
+          ),
+      })
+    );
 
-  const percentages = results.map(
 
-    (student) =>
+  const passStudents =
+    normalized.filter(
+      (student) =>
+        cleanString(
+          student.status
+        ).toUpperCase() ===
+        "PASS"
+    );
 
-      Number(student.percentage || 0)
 
-  );
+  const percentages =
+    normalized.map(
+      (student) =>
+        student.percentage
+    );
 
-  const topper = [...results].sort(
 
-    (a, b) =>
+  const topper =
+    [...passStudents].sort(
+      (a, b) => {
 
-      b.percentage - a.percentage
+        if (
+          b.percentage !==
+          a.percentage
+        ) {
+          return (
+            b.percentage -
+            a.percentage
+          );
+        }
 
-  )[0];
+
+        return (
+          b.obtainedMarks -
+          a.obtainedMarks
+        );
+      }
+    )[0] ||
+    null;
+
+
+  const totalStudents =
+    normalized.length;
+
+
+  const totalPass =
+    passStudents.length;
+
+
+  const totalFail =
+    totalStudents -
+    totalPass;
+
+
+  const averagePercentage =
+    percentages.reduce(
+      (sum, value) =>
+        sum + value,
+      0
+    ) /
+    totalStudents;
+
+
+  const passPercentage =
+    totalStudents > 0
+      ? (
+          totalPass /
+          totalStudents
+        ) *
+        100
+      : 0;
+
 
   return {
+    totalStudents,
 
-    totalStudents:
+    totalPass,
 
-      results.length,
-
-    totalPass:
-
-      passStudents.length,
-
-    totalFail:
-
-      results.length -
-
-      passStudents.length,
+    totalFail,
 
     highestPercentage:
-
-      Math.max(...percentages),
+      Math.max(
+        ...percentages
+      ),
 
     lowestPercentage:
+      Math.min(
+        ...percentages
+      ),
 
-      Math.min(...percentages),
+    averagePercentage:
+      round(
+        averagePercentage
+      ),
 
-    averagePercentage: Number(
-
-      (
-
-        percentages.reduce(
-
-          (a, b) => a + b,
-
-          0
-
-        ) / results.length
-
-      ).toFixed(2)
-
-    ),
+    passPercentage:
+      round(
+        passPercentage
+      ),
 
     topper,
-
   };
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    SUBJECT STATISTICS
-========================================================== */
+========================================================= */
 
 export function generateSubjectStatistics(
-
-  subjects,
-
-  results
-
+  subjects = [],
+  results = []
 ) {
-
   const statistics = {};
 
-  subjects.forEach((subject) => {
 
-    const totals = [];
+  if (
+    !Array.isArray(subjects)
+  ) {
+    return statistics;
+  }
 
-    results.forEach((student) => {
 
-      const marks =
+  const safeResults =
+    Array.isArray(
+      results
+    )
+      ? results
+      : [];
 
-        Number(
 
-          student.formData?.[subject.subjectCode]?.theory || 0
+  subjects.forEach(
+    (subject) => {
 
-        ) +
-
-        Number(
-
-          student.formData?.[subject.subjectCode]?.practical || 0
-
+      const code =
+        getSubjectCode(
+          subject
         );
 
-      totals.push(marks);
 
-    });
+      if (!code) {
+        return;
+      }
 
-    statistics[subject.subjectCode] = {
 
-      subjectName:
+      const totals = [];
 
-        subject.subjectName,
 
-      highest:
+      safeResults.forEach(
+        (student) => {
 
+          /*
+           * New result structure.
+           */
+
+          const directMarks =
+            student?.subjects?.find?.(
+              (item) =>
+                getSubjectCode(
+                  item
+                ) === code
+            );
+
+
+          if (
+            directMarks
+          ) {
+            const total =
+              toNumber(
+                directMarks.obtainedMarks ??
+                directMarks.total
+              );
+
+
+            totals.push(
+              total
+            );
+
+            return;
+          }
+
+
+          /*
+           * Existing formData structure.
+           */
+
+          const marks =
+            student?.formData?.[code] ||
+            {};
+
+
+          const total =
+            calculateSubjectTotal(
+              marks.theory,
+              marks.practical
+            );
+
+
+          totals.push(
+            total
+          );
+        }
+      );
+
+
+      const highest =
         totals.length
-
-          ? Math.max(...totals)
-
-          : 0,
-
-      lowest:
-
-        totals.length
-
-          ? Math.min(...totals)
-
-          : 0,
-
-      average:
-
-        totals.length
-
-          ? Number(
-
-              (
-
-                totals.reduce(
-
-                  (a, b) => a + b,
-
-                  0
-
-                ) / totals.length
-
-              ).toFixed(2)
-
+          ? Math.max(
+              ...totals
             )
+          : 0;
 
-          : 0,
 
-    };
+      const lowest =
+        totals.length
+          ? Math.min(
+              ...totals
+            )
+          : 0;
 
-  });
+
+      const average =
+        totals.length
+          ? totals.reduce(
+              (sum, value) =>
+                sum + value,
+              0
+            ) /
+            totals.length
+          : 0;
+
+
+      statistics[code] = {
+        subjectCode:
+          code,
+
+        subjectName:
+          getSubjectName(
+            subject
+          ),
+
+        highest,
+
+        lowest,
+
+        average:
+          round(
+            average
+          ),
+
+        studentCount:
+          totals.length,
+      };
+    }
+  );
+
 
   return statistics;
-
 }
-/* ==========================================================
+
+
+/* =========================================================
    RESULT VALIDATION
-========================================================== */
+========================================================= */
 
 export function validateResult(
-
-  subjects,
-
-  formData
-
+  subjects = [],
+  formData = {}
 ) {
-
   const errors = [];
 
-  subjects.forEach((subject) => {
 
-    const theory = Number(
+  if (
+    !Array.isArray(subjects)
+  ) {
+    return {
+      valid: false,
+      errors: [
+        "Subjects data is invalid.",
+      ],
+    };
+  }
 
-      formData[subject.subjectCode]?.theory || 0
 
-    );
+  let hasEnteredMarks =
+    false;
 
-    const practical = Number(
 
-      formData[subject.subjectCode]?.practical || 0
+  subjects.forEach(
+    (subject) => {
 
-    );
+      const code =
+        getSubjectCode(
+          subject
+        );
 
-    if (theory > Number(subject.theoryMarks || 0)) {
 
-      errors.push(
+      const name =
+        getSubjectName(
+          subject
+        );
 
-        `${subject.subjectName} Theory Marks Exceeded`
 
-      );
+      const marks =
+        formData?.[code] ||
+        {};
 
+
+      const theoryValue =
+        marks.theory;
+
+
+      const practicalValue =
+        marks.practical;
+
+
+      const theoryEntered =
+        theoryValue !== "" &&
+        theoryValue !== null &&
+        theoryValue !== undefined;
+
+
+      const practicalEntered =
+        practicalValue !== "" &&
+        practicalValue !== null &&
+        practicalValue !== undefined;
+
+
+      if (
+        theoryEntered ||
+        practicalEntered
+      ) {
+        hasEnteredMarks = true;
+      }
+
+
+      const theory =
+        Number(
+          theoryValue || 0
+        );
+
+
+      const practical =
+        Number(
+          practicalValue || 0
+        );
+
+
+      /*
+       * Invalid numeric input.
+       */
+
+      if (
+        !Number.isFinite(
+          theory
+        )
+      ) {
+        errors.push(
+          `${name}: Invalid theory marks.`
+        );
+      }
+
+
+      if (
+        !Number.isFinite(
+          practical
+        )
+      ) {
+        errors.push(
+          `${name}: Invalid practical marks.`
+        );
+      }
+
+
+      /*
+       * Negative marks.
+       */
+
+      if (
+        theory < 0
+      ) {
+        errors.push(
+          `${name}: Theory marks cannot be negative.`
+        );
+      }
+
+
+      if (
+        practical < 0
+      ) {
+        errors.push(
+          `${name}: Practical marks cannot be negative.`
+        );
+      }
+
+
+      /*
+       * Maximum marks.
+       */
+
+      const theoryMaximum =
+        toNumber(
+          subject.theoryMarks
+        );
+
+
+      const practicalMaximum =
+        toNumber(
+          subject.practicalMarks
+        );
+
+
+      if (
+        theoryMaximum > 0 &&
+        theory > theoryMaximum
+      ) {
+        errors.push(
+          `${name}: Theory marks exceeded maximum ${theoryMaximum}.`
+        );
+      }
+
+
+      if (
+        practicalMaximum > 0 &&
+        practical > practicalMaximum
+      ) {
+        errors.push(
+          `${name}: Practical marks exceeded maximum ${practicalMaximum}.`
+        );
+      }
+
+
+      /*
+       * Required component marks.
+       */
+
+      if (
+        theoryMaximum > 0 &&
+        !theoryEntered
+      ) {
+        errors.push(
+          `${name}: Theory marks required.`
+        );
+      }
+
+
+      if (
+        practicalMaximum > 0 &&
+        !practicalEntered
+      ) {
+        errors.push(
+          `${name}: Practical marks required.`
+        );
+      }
     }
+  );
 
-    if (
 
-      practical >
+  if (
+    !hasEnteredMarks
+  ) {
+    errors.unshift(
+      "Enter marks before generating the result."
+    );
+  }
 
-      Number(subject.practicalMarks || 0)
-
-    ) {
-
-      errors.push(
-
-        `${subject.subjectName} Practical Marks Exceeded`
-
-      );
-
-    }
-
-  });
 
   return {
-
-    valid: errors.length === 0,
+    valid:
+      errors.length === 0,
 
     errors,
-
   };
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    PUBLISH READY CHECK
-========================================================== */
+========================================================= */
 
 export function canPublishResult(
-
   result
-
 ) {
-
-  if (!result) return false;
-
-  if (!result.totalSubjects) return false;
-
-  if (result.maximumMarks === 0)
-
+  if (
+    !result ||
+    typeof result !==
+      "object"
+  ) {
     return false;
+  }
 
-  if (result.obtainedMarks > result.maximumMarks)
 
+  const totalSubjects =
+    toNumber(
+      result.totalSubjects
+    );
+
+
+  const maximumMarks =
+    toNumber(
+      result.maximumMarks
+    );
+
+
+  const obtainedMarks =
+    toNumber(
+      result.obtainedMarks
+    );
+
+
+  const percentage =
+    toNumber(
+      result.percentage
+    );
+
+
+  /*
+   * Basic completeness.
+   */
+
+  if (
+    totalSubjects <= 0
+  ) {
     return false;
+  }
+
+
+  if (
+    maximumMarks <= 0
+  ) {
+    return false;
+  }
+
+
+  /*
+   * Impossible marks.
+   */
+
+  if (
+    obtainedMarks < 0 ||
+    obtainedMarks >
+      maximumMarks
+  ) {
+    return false;
+  }
+
+
+  /*
+   * Invalid percentage.
+   */
+
+  if (
+    percentage < 0 ||
+    percentage > 100
+  ) {
+    return false;
+  }
+
+
+  /*
+   * Failed results should not
+   * normally be publish-ready.
+   */
+
+  if (
+    cleanString(
+      result.status
+    ).toUpperCase() ===
+    "FAIL"
+  ) {
+    return false;
+  }
+
 
   return true;
-
 }
 
-/* ==========================================================
+
+/* =========================================================
    PDF DATA
-========================================================== */
+========================================================= */
 
 export function preparePdfData(
-
   student,
-
   subjects,
-
   formData,
-
   result
-
 ) {
-
   return {
+    student:
+      student || null,
 
-    student,
+    subjects:
+      Array.isArray(
+        subjects
+      )
+        ? subjects
+        : [],
 
-    subjects,
+    marks:
+      formData || {},
 
-    marks: formData,
-
-    result,
+    result:
+      result || null,
 
     generatedAt:
+      new Date().toISOString(),
 
+    generatedAtLocal:
       new Date().toLocaleString(),
-
   };
-
 }
 
-/* ==========================================================
+
+/* =========================================================
+   EXTRA: RESULT QUALITY SCORE
+========================================================= */
+
+export function calculateResultQuality(
+  result
+) {
+  if (!result) {
+    return {
+      score: 0,
+      level: "INVALID",
+      valid: false,
+    };
+  }
+
+
+  const checks = [
+    toNumber(
+      result.totalSubjects
+    ) > 0,
+
+    toNumber(
+      result.maximumMarks
+    ) > 0,
+
+    toNumber(
+      result.obtainedMarks
+    ) >= 0,
+
+    toNumber(
+      result.obtainedMarks
+    ) <=
+      toNumber(
+        result.maximumMarks
+      ),
+
+    toNumber(
+      result.percentage
+    ) >= 0,
+
+    toNumber(
+      result.percentage
+    ) <= 100,
+  ];
+
+
+  const passedChecks =
+    checks.filter(
+      Boolean
+    ).length;
+
+
+  const score =
+    Math.round(
+      (
+        passedChecks /
+        checks.length
+      ) *
+      100
+    );
+
+
+  let level =
+    "INVALID";
+
+
+  if (
+    score === 100
+  ) {
+    level = "VALID";
+  } else if (
+    score >= 80
+  ) {
+    level = "WARNING";
+  }
+
+
+  return {
+    score,
+    level,
+    valid:
+      score === 100,
+  };
+}
+
+
+/* =========================================================
+   EXTRA: PERFORMANCE COLORS
+========================================================= */
+
+export function getPerformanceClass(
+  performance
+) {
+  const color =
+    cleanString(
+      performance?.color
+    ).toLowerCase();
+
+
+  const classes = {
+    green:
+      "text-emerald-600 bg-emerald-50",
+
+    blue:
+      "text-blue-600 bg-blue-50",
+
+    orange:
+      "text-orange-600 bg-orange-50",
+
+    yellow:
+      "text-yellow-700 bg-yellow-50",
+
+    red:
+      "text-red-600 bg-red-50",
+  };
+
+
+  return (
+    classes[color] ||
+    "text-slate-600 bg-slate-50"
+  );
+}
+
+
+/* =========================================================
    EXPORTS
-========================================================== */
+========================================================= */
 
 export default {
+  DEFAULT_SETTINGS,
 
   validateMarks,
 
@@ -1127,7 +2049,6 @@ export default {
   calculatePerformance,
 
   generateResult,
-  
 
   resetResultForm,
 
@@ -1149,6 +2070,7 @@ export default {
 
   preparePdfData,
 
-};
+  calculateResultQuality,
 
-  
+  getPerformanceClass,
+};

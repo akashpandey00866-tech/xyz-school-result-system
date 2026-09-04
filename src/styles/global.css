@@ -1,35 +1,522 @@
 @import "tailwindcss";
+
+/* =========================================================
+   SCHOOL ERP GLOBAL THEME
+========================================================= */
+
+:root {
+  --school-primary: #059669;
+  --school-primary-dark: #064e3b;
+  --school-primary-light: #d1fae5;
+  --school-accent: #10b981;
+  --school-soft: #ecfdf5;
+
+  --school-text: #0f172a;
+  --school-muted: #64748b;
+  --school-border: #e2e8f0;
+
+  --school-bg: #f8fafc;
+  --school-surface: #ffffff;
+  --school-surface-alt: #f8fafc;
+  --school-card: #ffffff;
+
+  --school-shadow:
+    0 20px 60px rgba(15, 23, 42, 0.08);
+
+  --school-radius-sm: 8px;
+  --school-radius-md: 12px;
+  --school-radius-lg: 18px;
+  --school-radius-xl: 24px;
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+/* =========================================================
+   BASE
+========================================================= */
+
+html {
+  scroll-behavior: smooth;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+
+  background:
+    var(--school-bg);
+
+  color:
+    var(--school-text);
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: inherit;
+}
+
+/* =========================================================
+   THEME UTILITIES
+========================================================= */
+
+.theme-bg {
+  background: var(--school-bg);
+}
+
+.theme-surface {
+  background: var(--school-surface);
+}
+
+.theme-card {
+  background: var(--school-card);
+}
+
+.theme-primary {
+  color: var(--school-primary);
+}
+
+.theme-muted {
+  color: var(--school-muted);
+}
+
+.theme-border {
+  border-color: var(--school-border);
+}
+
+.theme-primary-bg {
+  background: var(--school-primary);
+  color: #ffffff;
+}
+
+.theme-soft-bg {
+  background: var(--school-soft);
+}
+
+/* =========================================================
+   COMMON BUTTONS
+========================================================= */
+
+.school-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  min-height: 42px;
+  padding: 10px 16px;
+
+  border: 1px solid transparent;
+  border-radius: var(--school-radius-md);
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--school-primary),
+      var(--school-primary-dark)
+    );
+
+  color: #ffffff;
+
+  font-size: 13px;
+  font-weight: 800;
+
+  cursor: pointer;
+
+  box-shadow:
+    0 10px 25px
+    color-mix(
+      in srgb,
+      var(--school-primary) 20%,
+      transparent
+    );
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.school-primary-btn:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 14px 32px
+    color-mix(
+      in srgb,
+      var(--school-primary) 28%,
+      transparent
+    );
+}
+
+.school-primary-btn:active {
+  transform: translateY(0);
+}
+
+.school-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* =========================================================
+   FORM ELEMENTS
+========================================================= */
+
+.school-input,
+.school-select,
+.school-textarea {
+  width: 100%;
+
+  border:
+    1px solid var(--school-border);
+
+  border-radius:
+    var(--school-radius-md);
+
+  background:
+    var(--school-surface);
+
+  color:
+    var(--school-text);
+
+  outline: none;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.school-input,
+.school-select {
+  min-height: 42px;
+  padding: 9px 12px;
+}
+
+.school-textarea {
+  min-height: 110px;
+  padding: 11px 12px;
+  resize: vertical;
+}
+
+.school-input:focus,
+.school-select:focus,
+.school-textarea:focus {
+  border-color:
+    var(--school-primary);
+
+  box-shadow:
+    0 0 0 3px
+    color-mix(
+      in srgb,
+      var(--school-primary) 14%,
+      transparent
+    );
+}
+
+/* =========================================================
+   CARDS
+========================================================= */
+
+.school-card {
+  background:
+    var(--school-card);
+
+  border:
+    1px solid var(--school-border);
+
+  border-radius:
+    var(--school-radius-lg);
+
+  box-shadow:
+    var(--school-shadow);
+}
+
+.school-card-hover {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.school-card-hover:hover {
+  transform: translateY(-2px);
+
+  border-color:
+    color-mix(
+      in srgb,
+      var(--school-primary) 30%,
+      var(--school-border)
+    );
+}
+
+/* =========================================================
+   BADGES
+========================================================= */
+
+.school-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 25px;
+  padding: 4px 9px;
+
+  border-radius: 999px;
+
+  background:
+    var(--school-soft);
+
+  color:
+    var(--school-primary-dark);
+
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.school-badge-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.school-badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.school-badge-danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.school-badge-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color:
+    var(--school-primary)
+    var(--school-surface-alt);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background:
+    var(--school-surface-alt);
+}
+
+::-webkit-scrollbar-thumb {
+  background:
+    var(--school-primary);
+
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background:
+    var(--school-primary-dark);
+}
+
+/* =========================================================
+   SELECTION
+========================================================= */
+
+::selection {
+  background:
+    var(--school-primary-light);
+
+  color:
+    var(--school-primary-dark);
+}
+
+/* =========================================================
+   DARK MODE
+========================================================= */
+
+[data-mode="dark"] {
+  color-scheme: dark;
+}
+
+[data-mode="dark"] body {
+  background: #020617;
+  color: #f8fafc;
+}
+
+[data-mode="dark"] input,
+[data-mode="dark"] textarea,
+[data-mode="dark"] select {
+  color-scheme: dark;
+}
+
+/* =========================================================
+   PRINT — RECEIPT
+========================================================= */
+
 @media print {
 
-  @page{
-    size:A4 portrait;
-    margin:10mm;
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
   }
 
-  body *{
-    visibility:hidden;
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden;
   }
 
   #receipt,
-  #receipt *{
-    visibility:visible;
+  #receipt * {
+    visibility: visible;
   }
 
-  #receipt{
-    position:absolute;
-    left:0;
-    top:0;
-    width:190mm;
-    min-height:277mm;
-    margin:0;
-    padding:10mm;
-    box-shadow:none !important;
-    border:none !important;
-    overflow:hidden;
+  #receipt {
+    position: absolute;
+
+    left: 0;
+    top: 0;
+
+    width: 190mm;
+    min-height: 277mm;
+
+    margin: 0;
+    padding: 10mm;
+
+    background: #ffffff !important;
+
+    color: #000000 !important;
+
+    box-shadow: none !important;
+    border: none !important;
+
+    overflow: hidden;
   }
 
-  button{
-    display:none !important;
+  button,
+  .no-print,
+  [data-no-print="true"] {
+    display: none !important;
   }
 
+  a {
+    text-decoration: none !important;
+  }
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 768px) {
+
+  body {
+    overflow-x: hidden;
+  }
+
+  .school-card {
+    border-radius:
+      var(--school-radius-md);
+  }
+
+  .school-primary-btn {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   ACCESSIBILITY
+========================================================= */
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline:
+    3px solid
+    color-mix(
+      in srgb,
+      var(--school-primary) 35%,
+      transparent
+    );
+
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   REDUCED MOTION
+========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+
+    transition-duration:
+      0.01ms !important;
+
+    animation-duration:
+      0.01ms !important;
+
+    animation-iteration-count:
+      1 !important;
+  }
 }

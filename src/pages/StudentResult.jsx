@@ -1,2237 +1,1717 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
-import {
-  useNavigate,
-} from "react-router-dom";
-
-import {
-  collection,
-  getDocs,
-  limit,
-  query,
-} from "firebase/firestore";
-
-import {
-  auth,
-  db,
-} from "../config/firebase";
-
-import StudentLayout from "../layouts/StudentLayout";
-
-import {
-  belongsToStudent,
-  buildQrPdfResult,
-  className,
-  dateText,
-  enrollment,
-  isPublished,
-  lower,
-  makeConsolidatedResult,
-  num,
-  resultTitle,
-  resultType,
-  section,
-  session,
-  studentName,
-  timeValue,
-  verificationUrl,
-  getSubjects,
-  summarize,
-} from "../utils/studentResultEngine";
-
 /* =========================================================
-   THEME
-========================================================= */
-
-const THEMES = {
-  emerald: {
-    primary: "#059669",
-    dark: "#064e3b",
-    soft: "#ecfdf5",
-    text: "#047857",
-  },
-
-  blue: {
-    primary: "#2563eb",
-    dark: "#1e3a8a",
-    soft: "#eff6ff",
-    text: "#1d4ed8",
-  },
-
-  violet: {
-    primary: "#7c3aed",
-    dark: "#4c1d95",
-    soft: "#f5f3ff",
-    text: "#6d28d9",
-  },
-
-  orange: {
-    primary: "#ea580c",
-    dark: "#7c2d12",
-    soft: "#fff7ed",
-    text: "#c2410c",
-  },
-
-  rose: {
-    primary: "#e11d48",
-    dark: "#881337",
-    soft: "#fff1f2",
-    text: "#be123c",
-  },
-};
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function safeNumber(value) {
-  if (
-    typeof value ===
-    "number"
-  ) {
-    return Number.isFinite(
-      value
-    )
-      ? value
-      : 0;
-  }
-
-  const cleaned =
-    String(
-      value ?? ""
-    )
-      .replace(
-        /[₹,\s]/g,
-        ""
-      )
-      .replace(
-        /[^0-9.-]/g,
-        ""
-      );
-
-  if (!cleaned) {
-    return 0;
-  }
-
-  const number =
-    Number(cleaned);
-
-  return Number.isFinite(
-    number
-  )
-    ? number
-    : 0;
-}
-
-/* =========================================================
-   RESULT COMPLETENESS
+   PROFESSIONAL RESULT PDF
    ---------------------------------------------------------
-   PASS/FAIL is NOT shown until all configured
-   subject marks are actually available.
+   Dynamic • A4 • Multi-page • Print Ready
 ========================================================= */
 
-function isResultComplete(
-  result
+async function buildResultPdf(
+  student,
+  result,
+  schoolSettings = {}
 ) {
-  if (!result) {
-    return false;
+  const summary = summarize(result);
+
+  if (!summary.complete) {
+    throw new Error(
+      "Result PDF is available only after all required marks are complete."
+    );
   }
 
-  const subjects =
-    getSubjects(
-      result
+  const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true,
+  });
+
+  const PAGE_W = 210;
+  const PAGE_H = 297;
+
+  const MARGIN = 14;
+  const CONTENT_W = PAGE_W - MARGIN * 2;
+
+  const COLORS = {
+    navy: [15, 23, 42],
+    slate: [71, 85, 105],
+    muted: [100, 116, 139],
+    light: [241, 245, 249],
+    border: [203, 213, 225],
+    white: [255, 255, 255],
+
+    primary: [15, 118, 110],
+    primaryDark: [6, 78, 59],
+
+    success: [22, 163, 74],
+    danger: [220, 38, 38],
+    warning: [217, 119, 6],
+
+    cyan: [8, 145, 178],
+    indigo: [79, 70, 229],
+  };
+
+  const annual =
+    result?.consolidated === true;
+
+  const schoolName =
+    schoolSettings.schoolName ||
+    "XYZ PUBLIC SCHOOL";
+
+  const schoolAddress =
+    schoolSettings.schoolAddress ||
+    schoolSettings.address ||
+    "";
+
+  const schoolPhone =
+    schoolSettings.schoolPhone ||
+    schoolSettings.phone ||
+    "";
+
+  const schoolEmail =
+    schoolSettings.schoolEmail ||
+    schoolSettings.email ||
+    "";
+
+  const schoolWebsite =
+    schoolSettings.schoolWebsite ||
+    schoolSettings.website ||
+    "";
+
+  const logo =
+    schoolSettings.logoDataUrl ||
+    schoolSettings.logoImage ||
+    schoolSettings.logo ||
+    null;
+
+  const resultId =
+    result?.id ||
+    result?.resultId ||
+    "N/A";
+
+  const resultStatus =
+    String(
+      summary.status ||
+        result?.status ||
+        "PASS"
+    ).toUpperCase();
+
+  const percentage =
+    Number(
+      summary.percentage || 0
     );
 
-  if (
-    !subjects.length
-  ) {
-    return false;
+  const grade =
+    summary.grade ||
+    result?.grade ||
+    "—";
+
+  const division =
+    summary.division ||
+    result?.division ||
+    "—";
+
+  const rank =
+    result?.rank ??
+    summary.rank ??
+    "—";
+
+  /* =======================================================
+     HELPERS
+  ======================================================= */
+
+  const safe = (
+    value,
+    fallback = "—"
+  ) => {
+    if (
+      value === null ||
+      value === undefined ||
+      String(value).trim() === ""
+    ) {
+      return fallback;
+    }
+
+    return String(value);
+  };
+
+
+  const numberValue = (
+    value
+  ) => {
+    const n =
+      Number(value);
+
+    return Number.isFinite(n)
+      ? n
+      : 0;
+  };
+
+
+  const formatMarks = (
+    value
+  ) => {
+    const n =
+      numberValue(value);
+
+    return Number.isInteger(n)
+      ? String(n)
+      : n.toFixed(2);
+  };
+
+
+  const setFont = (
+    size = 8,
+    style = "normal",
+    color = COLORS.navy
+  ) => {
+    pdf.setFont(
+      "helvetica",
+      style
+    );
+
+    pdf.setFontSize(
+      size
+    );
+
+    pdf.setTextColor(
+      color[0],
+      color[1],
+      color[2]
+    );
+  };
+
+
+  const drawRoundedBox = (
+    x,
+    y,
+    w,
+    h,
+    fill,
+    radius = 3,
+    border = null
+  ) => {
+    pdf.setFillColor(
+      fill[0],
+      fill[1],
+      fill[2]
+    );
+
+    if (border) {
+      pdf.setDrawColor(
+        border[0],
+        border[1],
+        border[2]
+      );
+      pdf.setLineWidth(
+        0.25
+      );
+    } else {
+      pdf.setDrawColor(
+        fill[0],
+        fill[1],
+        fill[2]
+      );
+    }
+
+    pdf.roundedRect(
+      x,
+      y,
+      w,
+      h,
+      radius,
+      radius,
+      border ? "FD" : "F"
+    );
+  };
+
+
+  const drawPageFrame = () => {
+    pdf.setDrawColor(
+      COLORS.border[0],
+      COLORS.border[1],
+      COLORS.border[2]
+    );
+
+    pdf.setLineWidth(
+      0.35
+    );
+
+    pdf.rect(
+      7,
+      7,
+      PAGE_W - 14,
+      PAGE_H - 14
+    );
+
+    pdf.setLineWidth(
+      0.15
+    );
+
+    pdf.setDrawColor(
+      226,
+      232,
+      240
+    );
+
+    pdf.rect(
+      9.5,
+      9.5,
+      PAGE_W - 19,
+      PAGE_H - 19
+    );
+  };
+
+
+  const drawFooter = (
+    pageNumber,
+    totalPages
+  ) => {
+    const y =
+      PAGE_H - 12;
+
+    pdf.setDrawColor(
+      226,
+      232,
+      240
+    );
+
+    pdf.setLineWidth(
+      0.25
+    );
+
+    pdf.line(
+      MARGIN,
+      y - 4,
+      PAGE_W - MARGIN,
+      y - 4
+    );
+
+    setFont(
+      6.5,
+      "normal",
+      COLORS.muted
+    );
+
+    pdf.text(
+      `Result ID: ${safe(resultId)}`,
+      MARGIN,
+      y
+    );
+
+    pdf.text(
+      `Page ${pageNumber} of ${totalPages}`,
+      PAGE_W / 2,
+      y,
+      {
+        align: "center",
+      }
+    );
+
+    pdf.text(
+      "Computer-generated official academic record.",
+      PAGE_W - MARGIN,
+      y,
+      {
+        align: "right",
+      }
+    );
+  };
+
+
+  /* =======================================================
+     HEADER
+  ======================================================= */
+
+  drawPageFrame();
+
+  drawRoundedBox(
+    10,
+    10,
+    PAGE_W - 20,
+    38,
+    COLORS.navy,
+    4
+  );
+
+  /*
+   * Accent strip
+   */
+
+  pdf.setFillColor(
+    COLORS.primary[0],
+    COLORS.primary[1],
+    COLORS.primary[2]
+  );
+
+  pdf.rect(
+    10,
+    44,
+    PAGE_W - 20,
+    4,
+    "F"
+  );
+
+
+  /*
+   * Logo
+   */
+
+  if (logo) {
+    await addImageSafely(
+      pdf,
+      logo,
+      17,
+      16,
+      26,
+      26
+    );
+  } else {
+    drawRoundedBox(
+      17,
+      16,
+      26,
+      26,
+      COLORS.white,
+      4
+    );
+
+    setFont(
+      10,
+      "bold",
+      COLORS.primaryDark
+    );
+
+    const initials =
+      schoolName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 3)
+        .map(
+          (word) =>
+            word[0]
+        )
+        .join("")
+        .toUpperCase();
+
+    pdf.text(
+      initials || "XYZ",
+      30,
+      31,
+      {
+        align: "center",
+      }
+    );
   }
 
-  return subjects.every(
+
+  /*
+   * School information
+   */
+
+  setFont(
+    17,
+    "bold",
+    COLORS.white
+  );
+
+  pdf.text(
+    schoolName,
+    105,
+    20,
+    {
+      align: "center",
+      maxWidth: 115,
+    }
+  );
+
+  setFont(
+    9,
+    "bold",
+    [226, 232, 240]
+  );
+
+  pdf.text(
+    annual
+      ? "FINAL ANNUAL MARKSHEET"
+      : "OFFICIAL STUDENT MARKSHEET",
+    105,
+    28,
+    {
+      align: "center",
+    }
+  );
+
+  setFont(
+    6.5,
+    "normal",
+    [203, 213, 225]
+  );
+
+  const headerMeta = [
+    annual
+      ? "3 Examination Consolidation"
+      : resultType(result),
+    session(student),
+  ]
+    .filter(Boolean)
+    .join("  •  ");
+
+  pdf.text(
+    headerMeta,
+    105,
+    34,
+    {
+      align: "center",
+    }
+  );
+
+  const contact =
+    [
+      schoolAddress,
+      schoolPhone,
+      schoolEmail,
+      schoolWebsite,
+    ]
+      .filter(Boolean)
+      .join("  •  ");
+
+  if (contact) {
+    setFont(
+      6,
+      "normal",
+      [203, 213, 225]
+    );
+
+    pdf.text(
+      contact.slice(0, 145),
+      105,
+      40,
+      {
+        align: "center",
+      }
+    );
+  }
+
+
+  /*
+   * Status badge
+   */
+
+  const statusColor =
+    resultStatus === "PASS"
+      ? COLORS.success
+      : resultStatus === "FAIL"
+      ? COLORS.danger
+      : COLORS.warning;
+
+  drawRoundedBox(
+    166,
+    15,
+    34,
+    14,
+    statusColor,
+    7
+  );
+
+  setFont(
+    7,
+    "bold",
+    COLORS.white
+  );
+
+  pdf.text(
+    resultStatus,
+    183,
+    23.5,
+    {
+      align: "center",
+    }
+  );
+
+
+  /* =======================================================
+     DOCUMENT TITLE
+  ======================================================= */
+
+  setFont(
+    8,
+    "bold",
+    COLORS.muted
+  );
+
+  pdf.text(
+    annual
+      ? "CONSOLIDATED ACADEMIC PERFORMANCE"
+      : "ACADEMIC PERFORMANCE STATEMENT",
+    PAGE_W / 2,
+    58,
+    {
+      align: "center",
+    }
+  );
+
+  pdf.setDrawColor(
+    COLORS.border[0],
+    COLORS.border[1],
+    COLORS.border[2]
+  );
+
+  pdf.line(
+    58,
+    61,
+    152,
+    61
+  );
+
+
+  /* =======================================================
+     STUDENT INFORMATION
+  ======================================================= */
+
+  autoTable(
+    pdf,
+    {
+      startY: 65,
+
+      theme: "grid",
+
+      head: [
+        [
+          "STUDENT INFORMATION",
+          "DETAILS",
+          "",
+          "",
+        ],
+      ],
+
+      body: [
+        [
+          "Student Name",
+          studentName(student),
+          "Enrollment No.",
+          enrollment(student),
+        ],
+        [
+          "Class",
+          className(student),
+          "Section",
+          section(student),
+        ],
+        [
+          "Academic Session",
+          session(student),
+          "Examination",
+          resultTitle(result),
+        ],
+        [
+          "Result ID",
+          resultId,
+          "Result Status",
+          resultStatus,
+        ],
+      ],
+
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 3,
+        lineColor:
+          COLORS.border,
+        textColor:
+          COLORS.navy,
+        valign: "middle",
+      },
+
+      headStyles: {
+        fillColor:
+          COLORS.navy,
+        textColor:
+          COLORS.white,
+        fontStyle: "bold",
+        fontSize: 7,
+      },
+
+      columnStyles: {
+        0: {
+          cellWidth: 31,
+          fontStyle: "bold",
+          fillColor:
+            [248, 250, 252],
+        },
+
+        1: {
+          cellWidth: 62,
+        },
+
+        2: {
+          cellWidth: 31,
+          fontStyle: "bold",
+          fillColor:
+            [248, 250, 252],
+        },
+
+        3: {
+          cellWidth: 58,
+        },
+      },
+
+      margin: {
+        left: MARGIN,
+        right: MARGIN,
+      },
+    }
+  );
+
+
+  let y =
     (
-      subject
-    ) => {
-      const maximum =
-        safeNumber(
-          subject.maxMarks
-        );
+      pdf.lastAutoTable
+        ?.finalY ||
+      92
+    ) + 7;
 
-      const obtained =
-        safeNumber(
-          subject.obtainedMarks
-        );
 
-      /*
-       If admin has not configured a maximum,
-       this subject is not ready.
-      */
+  /* =======================================================
+     SUBJECT TABLE
+  ======================================================= */
+
+  const subjects =
+    Array.isArray(
+      summary.subjects
+    )
+      ? summary.subjects
+      : [];
+
+
+  if (
+    annual &&
+    Array.isArray(
+      result.sourceExams
+    ) &&
+    result.sourceExams.length > 0
+  ) {
+    const head = [
+      "SUBJECT",
+      ...result.sourceExams.map(
+        (exam) =>
+          safe(
+            exam.title,
+            "Exam"
+          )
+      ),
+      "ANNUAL",
+      "%",
+      "GRADE",
+      "STATUS",
+    ];
+
+
+    const body =
+      result.subjects.map(
+        (subject) => [
+          safe(
+            subject.name
+          ),
+
+          ...result.sourceExams.map(
+            (exam) => {
+              const row =
+                subject.examRows?.find(
+                  (item) =>
+                    item.examId ===
+                    exam.id
+                );
+
+              return row
+                ? `${formatMarks(
+                    row.obtainedMarks
+                  )}/${formatMarks(
+                    row.maxMarks
+                  )}`
+                : "—";
+            }
+          ),
+
+          `${formatMarks(
+            subject.obtained
+          )}/${formatMarks(
+            subject.maximum
+          )}`,
+
+          `${numberValue(
+            subject.percentage
+          ).toFixed(2)}%`,
+
+          safe(
+            subject.grade
+          ),
+
+          subject.passed
+            ? "PASS"
+            : "FAIL",
+        ]
+      );
+
+
+    autoTable(
+      pdf,
+      {
+        startY: y,
+
+        theme: "grid",
+
+        head: [head],
+
+        body,
+
+        styles: {
+          fontSize: 6.2,
+          cellPadding: 2.2,
+          lineColor:
+            COLORS.border,
+          textColor:
+            COLORS.navy,
+          valign: "middle",
+          overflow: "linebreak",
+        },
+
+        headStyles: {
+          fillColor:
+            COLORS.primaryDark,
+          textColor:
+            COLORS.white,
+          fontStyle: "bold",
+          fontSize: 5.9,
+          halign: "center",
+        },
+
+        alternateRowStyles: {
+          fillColor:
+            [248, 250, 252],
+        },
+
+        columnStyles: {
+          0: {
+            cellWidth: 30,
+            fontStyle: "bold",
+          },
+        },
+
+        margin: {
+          left: MARGIN,
+          right: MARGIN,
+        },
+
+        didParseCell(data) {
+          if (
+            data.section ===
+              "body" &&
+            data.column.index ===
+              head.length - 1
+          ) {
+            const value =
+              String(
+                data.cell.raw
+              ).toUpperCase();
+
+            if (
+              value === "PASS"
+            ) {
+              data.cell.styles.textColor =
+                COLORS.success;
+              data.cell.styles.fontStyle =
+                "bold";
+            }
+
+            if (
+              value === "FAIL"
+            ) {
+              data.cell.styles.textColor =
+                COLORS.danger;
+              data.cell.styles.fontStyle =
+                "bold";
+            }
+          }
+        },
+      }
+    );
+  } else {
+    const body =
+      subjects.map(
+        (subject, index) => [
+          String(
+            subject.code ||
+              index + 1
+          ),
+
+          safe(
+            subject.name
+          ),
+
+          subject.theoryMax
+            ? `${formatMarks(
+                subject.theory
+              )}/${formatMarks(
+                subject.theoryMax
+              )}`
+            : "—",
+
+          subject.practicalMax
+            ? `${formatMarks(
+                subject.practical
+              )}/${formatMarks(
+                subject.practicalMax
+              )}`
+            : "—",
+
+          subject.internalMax
+            ? `${formatMarks(
+                subject.internal
+              )}/${formatMarks(
+                subject.internalMax
+              )}`
+            : "—",
+
+          subject.projectMax
+            ? `${formatMarks(
+                subject.project
+              )}/${formatMarks(
+                subject.projectMax
+              )}`
+            : "—",
+
+          `${formatMarks(
+            subject.obtained
+          )}/${formatMarks(
+            subject.maximum
+          )}`,
+
+          `${numberValue(
+            subject.percentage
+          ).toFixed(2)}%`,
+
+          safe(
+            subject.grade
+          ),
+
+          subject.passed
+            ? "PASS"
+            : "FAIL",
+        ]
+      );
+
+
+    autoTable(
+      pdf,
+      {
+        startY: y,
+
+        theme: "grid",
+
+        head: [
+          [
+            "CODE",
+            "SUBJECT",
+            "THEORY",
+            "PRACTICAL",
+            "INTERNAL",
+            "PROJECT",
+            "TOTAL",
+            "%",
+            "GRADE",
+            "STATUS",
+          ],
+        ],
+
+        body,
+
+        styles: {
+          fontSize: 6.2,
+          cellPadding: 2.3,
+          lineColor:
+            COLORS.border,
+          textColor:
+            COLORS.navy,
+          valign: "middle",
+          halign: "center",
+        },
+
+        headStyles: {
+          fillColor:
+            COLORS.primaryDark,
+          textColor:
+            COLORS.white,
+          fontStyle: "bold",
+          fontSize: 5.8,
+        },
+
+        alternateRowStyles: {
+          fillColor:
+            [248, 250, 252],
+        },
+
+        columnStyles: {
+          0: {
+            cellWidth: 13,
+          },
+
+          1: {
+            cellWidth: 37,
+            halign: "left",
+            fontStyle: "bold",
+          },
+
+          2: {
+            cellWidth: 20,
+          },
+
+          3: {
+            cellWidth: 20,
+          },
+
+          4: {
+            cellWidth: 20,
+          },
+
+          5: {
+            cellWidth: 20,
+          },
+
+          6: {
+            cellWidth: 20,
+          },
+
+          7: {
+            cellWidth: 14,
+          },
+
+          8: {
+            cellWidth: 13,
+          },
+
+          9: {
+            cellWidth: 13,
+          },
+        },
+
+        margin: {
+          left: MARGIN,
+          right: MARGIN,
+        },
+
+        didParseCell(data) {
+          if (
+            data.section ===
+              "body" &&
+            data.column.index === 9
+          ) {
+            const value =
+              String(
+                data.cell.raw
+              ).toUpperCase();
+
+            if (
+              value === "PASS"
+            ) {
+              data.cell.styles.textColor =
+                COLORS.success;
+              data.cell.styles.fontStyle =
+                "bold";
+            }
+
+            if (
+              value === "FAIL"
+            ) {
+              data.cell.styles.textColor =
+                COLORS.danger;
+              data.cell.styles.fontStyle =
+                "bold";
+            }
+          }
+        },
+      }
+    );
+  }
+
+
+  y =
+    (
+      pdf.lastAutoTable
+        ?.finalY ||
+      y + 50
+    ) + 7;
+
+
+  /* =======================================================
+     GRAND TOTAL STRIP
+  ======================================================= */
+
+  if (
+    y > 195
+  ) {
+    pdf.addPage();
+    drawPageFrame();
+    y = 22;
+  }
+
+
+  drawRoundedBox(
+    MARGIN,
+    y,
+    CONTENT_W,
+    19,
+    COLORS.light,
+    3,
+    COLORS.border
+  );
+
+
+  const totalItems = [
+    [
+      "OBTAINED",
+      formatMarks(
+        summary.obtained
+      ),
+    ],
+    [
+      "MAXIMUM",
+      formatMarks(
+        summary.maximum
+      ),
+    ],
+    [
+      "PERCENTAGE",
+      `${percentage.toFixed(
+        2
+      )}%`,
+    ],
+    [
+      "GRADE",
+      grade,
+    ],
+    [
+      "DIVISION",
+      division,
+    ],
+  ];
+
+
+  const boxW =
+    CONTENT_W /
+    totalItems.length;
+
+
+  totalItems.forEach(
+    ([label, value], index) => {
+      const x =
+        MARGIN +
+        index * boxW;
+
 
       if (
-        maximum <= 0
+        index > 0
       ) {
-        return false;
+        pdf.setDrawColor(
+          COLORS.border[0],
+          COLORS.border[1],
+          COLORS.border[2]
+        );
+
+        pdf.line(
+          x,
+          y + 4,
+          x,
+          y + 15
+        );
       }
 
-      /*
-       Obtained can legitimately be 0.
-       Therefore do not use truthy checks.
-      */
 
-      const marksFieldsExist =
-        subject.obtainedMarks !==
-          undefined &&
-        subject.obtainedMarks !==
-          null;
+      setFont(
+        5.5,
+        "bold",
+        COLORS.muted
+      );
 
-      if (
-        !marksFieldsExist
-      ) {
-        return false;
-      }
+      pdf.text(
+        label,
+        x + boxW / 2,
+        y + 7,
+        {
+          align: "center",
+        }
+      );
 
-      return (
-        obtained >= 0 &&
-        obtained <= maximum
+
+      setFont(
+        10,
+        "bold",
+        COLORS.navy
+      );
+
+      pdf.text(
+        safe(value),
+        x + boxW / 2,
+        y + 14,
+        {
+          align: "center",
+        }
       );
     }
   );
-}
 
-/* =========================================================
-   STATUS
-========================================================= */
 
-function statusForResult(
-  result
-) {
-  if (
-    !isResultComplete(
-      result
-    )
-  ) {
-    return "PENDING";
-  }
+  y += 26;
 
-  const summary =
-    summarize(
-      result
+
+  /* =======================================================
+     PERFORMANCE / RESULT SUMMARY
+  ======================================================= */
+
+  const passed =
+    numberValue(
+      summary.passedSubjects
     );
 
-  return summary.pass
-    ? "PASS"
-    : "FAIL";
-}
-
-/* =========================================================
-   GRADE DISPLAY
-========================================================= */
-
-function gradeForResult(
-  result
-) {
-  if (
-    !isResultComplete(
-      result
+  const failed =
+    Array.isArray(
+      summary.failedSubjects
     )
-  ) {
-    return "—";
-  }
+      ? summary.failedSubjects.length
+      : 0;
 
-  return (
-    summarize(
-      result
-    ).grade ||
-    "—"
+
+  const performance =
+    percentage >= 90
+      ? "Outstanding"
+      : percentage >= 80
+      ? "Excellent"
+      : percentage >= 70
+      ? "Very Good"
+      : percentage >= 60
+      ? "Good"
+      : percentage >= 50
+      ? "Average"
+      : "Needs Improvement";
+
+
+  drawRoundedBox(
+    MARGIN,
+    y,
+    112,
+    31,
+    COLORS.white,
+    3,
+    COLORS.border
   );
-}
 
-/* =========================================================
-   FINAL CONSOLIDATION
-========================================================= */
 
-function finalConsolidation(
-  results
-) {
-  const published =
-    results.filter(
-      isPublished
+  setFont(
+    7,
+    "bold",
+    COLORS.navy
+  );
+
+  pdf.text(
+    "ACADEMIC PERFORMANCE",
+    MARGIN + 6,
+    y + 8
+  );
+
+
+  setFont(
+    13,
+    "bold",
+    percentage >= 33
+      ? COLORS.success
+      : COLORS.danger
+  );
+
+  pdf.text(
+    performance,
+    MARGIN + 6,
+    y + 17
+  );
+
+
+  setFont(
+    6.5,
+    "normal",
+    COLORS.muted
+  );
+
+  pdf.text(
+    `${passed} subject(s) passed • ${failed} subject(s) failed`,
+    MARGIN + 6,
+    y + 25
+  );
+
+
+  drawRoundedBox(
+    MARGIN + 118,
+    y,
+    CONTENT_W - 118,
+    31,
+    resultStatus === "PASS"
+      ? [240, 253, 244]
+      : [254, 242, 242],
+    3,
+    resultStatus === "PASS"
+      ? [187, 247, 208]
+      : [254, 202, 202]
+  );
+
+
+  setFont(
+    6,
+    "bold",
+    COLORS.muted
+  );
+
+  pdf.text(
+    "FINAL RESULT",
+    MARGIN + 124,
+    y + 8
+  );
+
+
+  setFont(
+    14,
+    "bold",
+    statusColor
+  );
+
+  pdf.text(
+    resultStatus,
+    MARGIN + 124,
+    y + 18
+  );
+
+
+  setFont(
+    6.5,
+    "normal",
+    COLORS.muted
+  );
+
+  pdf.text(
+    `Rank: ${safe(rank)}`,
+    MARGIN + 124,
+    y + 25
+  );
+
+
+  y += 38;
+
+
+  /* =======================================================
+     REMARKS
+  ======================================================= */
+
+  const remarks =
+    result?.adminRemarks ||
+    result?.teacherRemarks ||
+    result?.remarks ||
+    "";
+
+
+  if (
+    remarks
+  ) {
+    if (
+      y > 235
+    ) {
+      pdf.addPage();
+      drawPageFrame();
+      y = 22;
+    }
+
+
+    drawRoundedBox(
+      MARGIN,
+      y,
+      CONTENT_W,
+      22,
+      [248, 250, 252],
+      3,
+      COLORS.border
     );
 
-  const annual =
-    published.find(
-      (item) => {
-        const type =
-          resultType(
-            item
-          );
 
-        return (
-          type ===
-            "ANNUAL" ||
-          type ===
-            "FINAL"
+    setFont(
+      6,
+      "bold",
+      COLORS.muted
+    );
+
+    pdf.text(
+      "TEACHER / ADMIN REMARKS",
+      MARGIN + 6,
+      y + 7
+    );
+
+
+    setFont(
+      7,
+      "normal",
+      COLORS.navy
+    );
+
+    const remarkLines =
+      pdf.splitTextToSize(
+        String(
+          remarks
+        ),
+        CONTENT_W - 12
+      );
+
+
+    pdf.text(
+      remarkLines.slice(
+        0,
+        2
+      ),
+      MARGIN + 6,
+      y + 14
+    );
+
+
+    y += 29;
+  }
+
+
+  /* =======================================================
+     VERIFICATION QR
+  ======================================================= */
+
+  let qrAdded =
+    false;
+
+
+  if (
+    schoolSettings.showQrOnResult !==
+    false
+  ) {
+    try {
+      const verifyUrl =
+        `${window.location.origin}/verify-result?result=${encodeURIComponent(
+          resultId
+        )}&student=${encodeURIComponent(
+          student?.id || ""
+        )}&enrollment=${encodeURIComponent(
+          enrollment(student)
+        )}`;
+
+
+      const qr =
+        await QRCode.toDataURL(
+          verifyUrl,
+          {
+            width: 400,
+            margin: 1,
+            errorCorrectionLevel:
+              "H",
+          }
+        );
+
+
+      if (
+        y + 43 >
+        PAGE_H - 20
+      ) {
+        pdf.addPage();
+        drawPageFrame();
+        y = 22;
+      }
+
+
+      qrAdded =
+        await addImageSafely(
+          pdf,
+          qr,
+          MARGIN,
+          y,
+          32,
+          32
+        );
+
+
+      if (
+        qrAdded
+      ) {
+        setFont(
+          5.8,
+          "bold",
+          COLORS.muted
+        );
+
+        pdf.text(
+          "SCAN TO VERIFY",
+          MARGIN + 16,
+          y + 38,
+          {
+            align: "center",
+          }
         );
       }
+    } catch (
+      error
+    ) {
+      console.warn(
+        "Result QR generation failed:",
+        error
+      );
+    }
+  }
+
+
+  /* =======================================================
+     SIGNATURE AREA
+  ======================================================= */
+
+  const signatureY =
+    Math.max(
+      y + 4,
+      245
     );
 
-  if (
-    annual
-  ) {
-    return {
-      result: annual,
-      official: true,
-      ready: isResultComplete(
-        annual
-      ),
-      exams: [],
-    };
-  }
 
   /*
-   Only the first three unique
-   published examinations take part
-   in final consolidation.
-  */
+   * Keep signature section inside
+   * the A4 page.
+   */
 
-  const unique =
-    [];
-
-  const seen =
-    new Set();
-
-  published
-    .sort(
-      (
-        a,
-        b
-      ) =>
-        timeValue(
-          a.publishedAt ||
-            a.updatedAt ||
-            a.createdAt
-        ) -
-        timeValue(
-          b.publishedAt ||
-            b.updatedAt ||
-            b.createdAt
-        )
-    )
-    .forEach(
-      (
-        item
-      ) => {
-        const key =
-          lower(
-            item.examId ||
-              item.examName ||
-              item.examinationName ||
-              item.name ||
-              item.id
-          );
-
-        if (
-          !seen.has(
-            key
-          ) &&
-          unique.length <
-            3
-        ) {
-          seen.add(
-            key
-          );
-
-          unique.push(
-            item
-          );
-        }
-      }
+  const safeSignatureY =
+    Math.min(
+      signatureY,
+      258
     );
+
+
+  const teacherX =
+    55;
+
+  const principalX =
+    125;
+
+  const sealX =
+    175;
+
+
+  /*
+   * Signature images
+   */
 
   if (
-    unique.length <
-    3
+    schoolSettings.showSignature !==
+    false
   ) {
-    return {
-      result: null,
-      official: false,
-      ready: false,
-      exams: unique,
-    };
-  }
-
-  const complete =
-    unique.every(
-      isResultComplete
-    );
-
-  if (
-    !complete
-  ) {
-    return {
-      result: null,
-      official: false,
-      ready: false,
-      exams: unique,
-    };
-  }
-
-  const consolidated =
-    makeConsolidatedResult(
-      unique
-    );
-
-  return {
-    result:
-      consolidated ||
-      null,
-
-    official:
-      false,
-
-    ready:
-      Boolean(
-        consolidated
-      ),
-
-    exams:
-      unique,
-  };
-}
-
-/* =========================================================
-   CARD
-========================================================= */
-
-function Card({
-  children,
-  className: cls = "",
-}) {
-  return (
-    <section
-      className={`rounded-3xl border border-slate-200 bg-white shadow-sm ${cls}`}
-    >
-      {children}
-    </section>
-  );
-}
-
-/* =========================================================
-   STAT
-========================================================= */
-
-function Stat({
-  label,
-  value,
-  tone = "slate",
-}) {
-  const tones = {
-    slate:
-      "bg-slate-50 text-slate-900",
-
-    green:
-      "bg-emerald-50 text-emerald-900",
-
-    blue:
-      "bg-blue-50 text-blue-900",
-
-    violet:
-      "bg-violet-50 text-violet-900",
-
-    amber:
-      "bg-amber-50 text-amber-900",
-
-    red:
-      "bg-red-50 text-red-900",
-
-    pending:
-      "bg-amber-50 text-amber-900",
-  };
-
-  return (
-    <div
-      className={`rounded-2xl p-4 ${
-        tones[
-          tone
-        ] ||
-        tones.slate
-      }`}
-    >
-      <p className="text-[9px] font-black uppercase tracking-wider opacity-60">
-        {label}
-      </p>
-
-      <p className="mt-1 break-words text-xl font-black">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-/* =========================================================
-   STATUS BADGE
-========================================================= */
-
-function StatusBadge({
-  status,
-}) {
-  const normalized =
-    String(
-      status ||
-        "PENDING"
-    ).toUpperCase();
-
-  if (
-    normalized ===
-    "PASS"
-  ) {
-    return (
-      <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[9px] font-black text-emerald-700">
-        PASS
-      </span>
-    );
-  }
-
-  if (
-    normalized ===
-    "FAIL"
-  ) {
-    return (
-      <span className="rounded-full bg-red-50 px-3 py-1.5 text-[9px] font-black text-red-700">
-        FAIL
-      </span>
-    );
-  }
-
-  return (
-    <span className="rounded-full bg-amber-50 px-3 py-1.5 text-[9px] font-black text-amber-700">
-      PENDING
-    </span>
-  );
-}
-
-/* =========================================================
-   RESULT TABLE
-========================================================= */
-
-function ResultTable({
-  result,
-  consolidated = false,
-}) {
-  const summary =
-    consolidated
-      ? result
-      : summarize(
-          result
-        );
-
-  const status =
-    statusForResult(
-      result
-    );
-
-  return (
-    <div className="overflow-x-auto rounded-3xl border border-slate-200">
-      <table className="w-full min-w-[1000px] border-collapse">
-        <thead>
-          <tr className="bg-slate-950 text-left text-[9px] font-black uppercase tracking-wider text-white">
-            <th className="px-5 py-4">
-              Subject
-            </th>
-
-            {consolidated ? (
-              result.sourceExams?.map(
-                (exam) => (
-                  <th
-                    key={
-                      exam.id
-                    }
-                    className="px-4 py-4 text-center"
-                  >
-                    {
-                      exam.title
-                    }
-                  </th>
-                )
-              )
-            ) : (
-              <>
-                <th className="px-4 py-4 text-center">
-                  Theory
-                </th>
-
-                <th className="px-4 py-4 text-center">
-                  Practical
-                </th>
-              </>
-            )}
-
-            <th className="px-4 py-4 text-center">
-              Total
-            </th>
-
-            <th className="px-4 py-4 text-center">
-              %
-            </th>
-
-            <th className="px-4 py-4 text-center">
-              Grade
-            </th>
-
-            <th className="px-4 py-4 text-center">
-              Status
-            </th>
-          </tr>
-        </thead>
-
-        <tbody className="divide-y divide-slate-100">
-          {summary.subjects.map(
-            (
-              subject
-            ) => {
-              const rowStatus =
-                subject.passed
-                  ? "PASS"
-                  : isResultComplete(
-                      result
-                    )
-                    ? "FAIL"
-                    : "PENDING";
-
-              return (
-                <tr
-                  key={
-                    subject.id
-                  }
-                  className="hover:bg-slate-50"
-                >
-                  <td className="px-5 py-4">
-                    <div>
-                      <p className="text-xs font-black text-slate-800">
-                        {
-                          subject.name
-                        }
-                      </p>
-
-                      {subject.code && (
-                        <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-500">
-                          {
-                            subject.code
-                          }
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  {consolidated ? (
-                    subject.examRows?.map(
-                      (
-                        row
-                      ) => (
-                        <td
-                          key={
-                            row.examId
-                          }
-                          className="px-4 py-4 text-center"
-                        >
-                          <div className="text-[10px] font-black text-slate-700">
-                            {
-                              row.obtainedMarks
-                            }
-                            /
-                            {
-                              row.maxMarks
-                            }
-                          </div>
-
-                          <div className="mt-1 text-[8px] font-bold text-slate-400">
-                            {
-                              row.grade
-                            }
-                          </div>
-                        </td>
-                      )
-                    )
-                  ) : (
-                    <>
-                      <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-600">
-                        {subject.theoryMax
-                          ? `${subject.theory}/${subject.theoryMax}`
-                          : "—"}
-                      </td>
-
-                      <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-600">
-                        {subject.practicalMax
-                          ? `${subject.practical}/${subject.practicalMax}`
-                          : "—"}
-                      </td>
-                    </>
-                  )}
-
-                  <td className="px-4 py-4 text-center">
-                    <span className="text-sm font-black text-slate-900">
-                      {
-                        subject.obtainedMarks
-                      }
-                      /
-                      {
-                        subject.maxMarks
-                      }
-                    </span>
-                  </td>
-
-                  <td className="px-4 py-4 text-center text-xs font-black text-blue-700">
-                    {isResultComplete(
-                      result
-                    )
-                      ? `${safeNumber(
-                          subject.percentage
-                        ).toFixed(
-                          2
-                        )}%`
-                      : "—"}
-                  </td>
-
-                  <td className="px-4 py-4 text-center">
-                    {isResultComplete(
-                      result
-                    ) ? (
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[9px] font-black ${
-                          subject.grade ===
-                            "F" ||
-                          !subject.passed
-                            ? "bg-red-50 text-red-700"
-                            : "bg-emerald-50 text-emerald-700"
-                        }`}
-                      >
-                        {
-                          subject.grade
-                        }
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[9px] font-black text-amber-700">
-                        —
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="px-4 py-4 text-center">
-                    <StatusBadge
-                      status={
-                        rowStatus
-                      }
-                    />
-                  </td>
-                </tr>
-              );
-            }
-          )}
-        </tbody>
-
-        <tfoot>
-          <tr className="bg-emerald-50 text-xs font-black text-emerald-900">
-
-            <td
-              colSpan={
-                consolidated
-                  ? 1 +
-                    (
-                      result.sourceExams
-                        ?.length ||
-                      0
-                    )
-                  : 3
-              }
-              className="px-5 py-4"
-            >
-              GRAND TOTAL
-            </td>
-
-            <td className="px-4 py-4 text-center">
-              {isResultComplete(
-                result
-              )
-                ? `${num(
-                    summary.obtainedMarks
-                  )}/${num(
-                    summary.maxMarks
-                  )}`
-                : "—"}
-            </td>
-
-            <td className="px-4 py-4 text-center">
-              {isResultComplete(
-                result
-              )
-                ? `${num(
-                    summary.percentage
-                  ).toFixed(
-                    2
-                  )}%`
-                : "—"}
-            </td>
-
-            <td className="px-4 py-4 text-center">
-              {gradeForResult(
-                result
-              )}
-            </td>
-
-            <td className="px-4 py-4 text-center">
-              <StatusBadge
-                status={
-                  status
-                }
-              />
-            </td>
-
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  );
-}
-
-/* =========================================================
-   MAIN
-========================================================= */
-
-export default function StudentResult() {
-  const navigate =
-    useNavigate();
-
-  const [student, setStudent] =
-    useState(null);
-
-  const [results, setResults] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
-
-  const [selectedId, setSelectedId] =
-    useState("");
-
-  const [mode, setMode] =
-    useState("INDIVIDUAL");
-
-  const [search, setSearch] =
-    useState("");
-
-  const [
-    themeName,
-    setThemeName,
-  ] = useState(
-    () =>
-      localStorage.getItem(
-        "studentResultTheme"
-      ) ||
-      "emerald"
-  );
-
-  const theme =
-    THEMES[
-      themeName
-    ] ||
-    THEMES.emerald;
-
-  /* =======================================================
-     THEME
-  ======================================================= */
-
-  useEffect(
-    () => {
-      localStorage.setItem(
-        "studentResultTheme",
-        themeName
-      );
-
-      document.documentElement.style.setProperty(
-        "--student-primary",
-        theme.primary
-      );
-
-      document.documentElement.style.setProperty(
-        "--student-dark",
-        theme.dark
-      );
-
-      document.documentElement.style.setProperty(
-        "--student-soft",
-        theme.soft
-      );
-    },
-    [
-      themeName,
-      theme,
-    ]
-  );
-
-  /* =======================================================
-     LOAD AUTHENTICATED STUDENT + RESULTS
-  ======================================================= */
-
-  useEffect(
-    () => {
-      let active =
-        true;
-
-      async function load() {
-        try {
-          const user =
-            auth.currentUser;
-
-          if (
-            !user
-          ) {
-            navigate(
-              "/student-login",
-              {
-                replace:
-                  true,
-              }
-            );
-
-            return;
-          }
-
-          const studentSnapshot =
-            await getDocs(
-              query(
-                collection(
-                  db,
-                  "students"
-                ),
-                limit(
-                  1000
-                )
-              )
-            );
-
-          const profile =
-            studentSnapshot.docs
-              .map(
-                (
-                  item
-                ) => ({
-                  id:
-                    item.id,
-
-                  ...item.data(),
-                })
-              )
-              .find(
-                (
-                  item
-                ) =>
-                  String(
-                    item.uid ||
-                      item.authUid ||
-                      ""
-                  ) ===
-                    String(
-                      user.uid
-                    ) ||
-                  lower(
-                    item.email ||
-                      item.accountEmail
-                  ) ===
-                    lower(
-                      user.email
-                    )
-              );
-
-          if (
-            !profile
-          ) {
-            throw new Error(
-              "Student profile not found."
-            );
-          }
-
-          const resultSnapshot =
-            await getDocs(
-              query(
-                collection(
-                  db,
-                  "results"
-                ),
-                limit(
-                  2000
-                )
-              )
-            );
-
-          const owned =
-            resultSnapshot.docs
-              .map(
-                (
-                  item
-                ) => ({
-                  id:
-                    item.id,
-
-                  ...item.data(),
-                })
-              )
-              .filter(
-                (
-                  item
-                ) =>
-                  belongsToStudent(
-                    item,
-                    profile
-                  )
-              )
-              .filter(
-                isPublished
-              )
-              .sort(
-                (
-                  a,
-                  b
-                ) =>
-                  timeValue(
-                    b.publishedAt ||
-                      b.updatedAt ||
-                      b.createdAt
-                  ) -
-                  timeValue(
-                    a.publishedAt ||
-                      a.updatedAt ||
-                      a.createdAt
-                  )
-              );
-
-          if (
-            !active
-          ) {
-            return;
-          }
-
-          setStudent(
-            profile
-          );
-
-          setResults(
-            owned
-          );
-
-          setSelectedId(
-            owned[0]?.id ||
-              ""
-          );
-        } catch (
-          loadError
-        ) {
-          console.error(
-            "Student result load:",
-            loadError
-          );
-
-          if (
-            active
-          ) {
-            setError(
-              loadError?.message ||
-                "Unable to load published results."
-            );
-          }
-        } finally {
-          if (
-            active
-          ) {
-            setLoading(
-              false
-            );
-          }
-        }
-      }
-
-      load();
-
-      return () => {
-        active =
-          false;
-      };
-    },
-    [
-      navigate,
-    ]
-  );
-
-  /* =======================================================
-     SEARCH
-  ======================================================= */
-
-  const filteredResults =
-    useMemo(
-      () => {
-        const searchText =
-          lower(
-            search
-          );
-
-        if (
-          !searchText
-        ) {
-          return results;
-        }
-
-        return results.filter(
-          (
-            item
-          ) =>
-            `${resultTitle(
-              item
-            )} ${resultType(
-              item
-            )}`
-              .toLowerCase()
-              .includes(
-                searchText
-              )
-        );
-      },
-      [
-        results,
-        search,
-      ]
-    );
-
-  /* =======================================================
-     INDIVIDUAL
-  ======================================================= */
-
-  const individualResult =
-    useMemo(
-      () =>
-        filteredResults.find(
-          (
-            item
-          ) =>
-            item.id ===
-            selectedId
-        ) ||
-        filteredResults[0] ||
+    await addImageSafely(
+      pdf,
+      schoolSettings.signatureDataUrl ||
+        schoolSettings.signatureImage ||
         null,
-      [
-        filteredResults,
-        selectedId,
-      ]
-    );
-
-  /* =======================================================
-     FINAL RESULT
-  ======================================================= */
-
-  const finalModel =
-    useMemo(
-      () =>
-        finalConsolidation(
-          results
-        ),
-      [
-        results,
-      ]
-    );
-
-  const activeResult =
-    mode ===
-      "CONSOLIDATED"
-      ? finalModel.result
-      : individualResult;
-
-  const activeSummary =
-    activeResult
-      ? summarize(
-          activeResult
-        )
-      : null;
-
-  const activeComplete =
-    activeResult
-      ? isResultComplete(
-          activeResult
-        )
-      : false;
-
-  const activeStatus =
-    activeResult
-      ? statusForResult(
-          activeResult
-        )
-      : "PENDING";
-
-  /* =======================================================
-     QR
-  ======================================================= */
-
-  const [qr, setQr] =
-    useState("");
-
-  useEffect(
-    () => {
-      let cancelled =
-        false;
-
-      async function createQr() {
-        if (
-          !student ||
-          !activeResult
-        ) {
-          setQr(
-            ""
-          );
-
-          return;
-        }
-
-        try {
-          const url =
-            verificationUrl(
-              activeResult,
-              student
-            );
-
-          const module =
-            await import(
-              "qrcode"
-            );
-
-          const QRCode =
-            module.default ||
-            module;
-
-          const data =
-            await QRCode.toDataURL(
-              url,
-              {
-                width:
-                  240,
-
-                margin:
-                  2,
-
-                errorCorrectionLevel:
-                  "M",
-              }
-            );
-
-          if (
-            !cancelled
-          ) {
-            setQr(
-              data
-            );
-          }
-        } catch (
-          qrError
-        ) {
-          console.error(
-            "Result QR:",
-            qrError
-          );
-
-          if (
-            !cancelled
-          ) {
-            setQr(
-              ""
-            );
-          }
-        }
-      }
-
-      createQr();
-
-      return () => {
-        cancelled =
-          true;
-      };
-    },
-    [
-      student,
-      activeResult,
-    ]
-  );
-
-  /* =======================================================
-     ACTIONS
-  ======================================================= */
-
-  const downloadPdf =
-    async () => {
-      if (
-        !student ||
-        !activeResult
-      ) {
-        return;
-      }
-
-      if (
-        !activeComplete
-      ) {
-        setError(
-          "Result PDF is available after all required marks are published."
-        );
-
-        return;
-      }
-
-      try {
-        const url =
-          verificationUrl(
-            activeResult,
-            student
-          );
-
-        const pdf =
-          await buildQrPdfResult(
-            student,
-            activeResult,
-            url
-          );
-
-        pdf.save(
-          `result-${enrollment(
-            student
-          )}-${resultType(
-            activeResult
-          )
-            .replace(
-              /\s+/g,
-              "-"
-            )
-            .toLowerCase()}.pdf`
-        );
-      } catch (
-        pdfError
-      ) {
-        console.error(
-          "Result PDF:",
-          pdfError
-        );
-
-        setError(
-          "Unable to create result PDF."
-        );
-      }
-    };
-
-  const verifyOnline =
-    () => {
-      if (
-        !student ||
-        !activeResult
-      ) {
-        return;
-      }
-
-      window.open(
-        verificationUrl(
-          activeResult,
-          student
-        ),
-        "_blank",
-        "noopener,noreferrer"
-      );
-    };
-
-  const printResult =
-    async () => {
-      if (
-        !student ||
-        !activeResult ||
-        !activeComplete
-      ) {
-        return;
-      }
-
-      try {
-        const url =
-          verificationUrl(
-            activeResult,
-            student
-          );
-
-        const pdf =
-          await buildQrPdfResult(
-            student,
-            activeResult,
-            url
-          );
-
-        const blob =
-          pdf.output(
-            "blob"
-          );
-
-        const objectUrl =
-          URL.createObjectURL(
-            blob
-          );
-
-        const popup =
-          window.open(
-            objectUrl,
-            "_blank",
-            "width=900,height=1000"
-          );
-
-        if (!popup) {
-          window.alert(
-            "Popup blocked. Allow popups for this portal."
-          );
-
-          URL.revokeObjectURL(
-            objectUrl
-          );
-
-          return;
-        }
-
-        popup.onload =
-          () => {
-            popup.focus();
-            popup.print();
-
-            window.setTimeout(
-              () =>
-                URL.revokeObjectURL(
-                  objectUrl
-                ),
-              5000
-            );
-          };
-      } catch (
-        printError
-      ) {
-        console.error(
-          "Print result:",
-          printError
-        );
-
-        setError(
-          "Unable to prepare result for printing."
-        );
-      }
-    };
-
-  /* =======================================================
-     LOADING
-  ======================================================= */
-
-  if (
-    loading
-  ) {
-    return (
-      <StudentLayout>
-        <div className="flex min-h-[75vh] items-center justify-center bg-slate-50">
-          <div className="text-center">
-
-            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" />
-
-            <p className="mt-4 text-sm font-black text-slate-800">
-              Loading Academic Records
-            </p>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Preparing published results…
-            </p>
-
-          </div>
-        </div>
-      </StudentLayout>
+      teacherX - 23,
+      safeSignatureY - 17,
+      46,
+      13
     );
   }
 
+
+  /*
+   * Principal signature
+   */
+
+  await addImageSafely(
+    pdf,
+    schoolSettings.principalSignatureDataUrl ||
+      schoolSettings.principalSignatureImage ||
+      null,
+    principalX - 23,
+    safeSignatureY - 17,
+    46,
+    13
+  );
+
+
+  /*
+   * School seal
+   */
+
+  if (
+    schoolSettings.showSeal !==
+    false
+  ) {
+    await addImageSafely(
+      pdf,
+      schoolSettings.sealDataUrl ||
+        schoolSettings.sealImage ||
+        null,
+      sealX - 15,
+      safeSignatureY - 20,
+      30,
+      18
+    );
+  }
+
+
+  /*
+   * Signature lines
+   */
+
+  pdf.setDrawColor(
+    100,
+    116,
+    139
+  );
+
+  pdf.setLineWidth(
+    0.3
+  );
+
+
+  pdf.line(
+    25,
+    safeSignatureY,
+    85,
+    safeSignatureY
+  );
+
+
+  pdf.line(
+    95,
+    safeSignatureY,
+    155,
+    safeSignatureY
+  );
+
+
+  pdf.line(
+    160,
+    safeSignatureY,
+    190,
+    safeSignatureY
+  );
+
+
+  setFont(
+    6.5,
+    "bold",
+    COLORS.navy
+  );
+
+  pdf.text(
+    "Class Teacher",
+    teacherX,
+    safeSignatureY + 6,
+    {
+      align: "center",
+    }
+  );
+
+
+  pdf.text(
+    "Principal",
+    principalX,
+    safeSignatureY + 6,
+    {
+      align: "center",
+    }
+  );
+
+
+  pdf.text(
+    "School Seal",
+    sealX,
+    safeSignatureY + 6,
+    {
+      align: "center",
+    }
+  );
+
+
   /* =======================================================
-     PAGE
+     PUBLISHED DATE
   ======================================================= */
 
-  return (
-    <StudentLayout>
-
-      <div className="min-h-screen bg-slate-50">
-
-        <div className="mx-auto max-w-[1500px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-
-          {/* HEADER */}
-
-          <section className="overflow-hidden rounded-[30px] bg-[var(--student-dark)] p-6 text-white shadow-xl sm:p-8">
-
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-
-              <div className="min-w-0">
-
-                <span className="inline-flex rounded-full bg-white/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider">
-                  Academic Records • Secure
-                </span>
-
-                <h1 className="mt-4 text-3xl font-black sm:text-4xl">
-                  Result Centre
-                </h1>
-
-                <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-200">
-                  Each published examination remains separate.
-                  The final result is consolidated only after
-                  three complete examinations or an official
-                  Annual/Final result is published.
-                </p>
-
-                {student && (
-                  <div className="mt-5 flex flex-wrap gap-2">
-
-                    <span className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-bold">
-                      🎓{" "}
-                      {studentName(
-                        student
-                      )}
-                    </span>
-
-                    <span className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-bold">
-                      🪪{" "}
-                      {enrollment(
-                        student
-                      )}
-                    </span>
-
-                    <span className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-bold">
-                      📚{" "}
-                      {className(
-                        student
-                      )}{" "}
-                      -{" "}
-                      {section(
-                        student
-                      )}
-                    </span>
-
-                    <span className="rounded-xl bg-white/10 px-3 py-2 text-[10px] font-bold">
-                      📅{" "}
-                      {session(
-                        student
-                      )}
-                    </span>
-
-                  </div>
-                )}
-
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-
-                <select
-                  value={
-                    themeName
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setThemeName(
-                      event.target
-                        .value
-                    )
-                  }
-                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-xs font-black text-white outline-none backdrop-blur"
-                >
-                  <option
-                    value="emerald"
-                    className="text-slate-900"
-                  >
-                    Emerald
-                  </option>
-
-                  <option
-                    value="blue"
-                    className="text-slate-900"
-                  >
-                    Blue
-                  </option>
-
-                  <option
-                    value="violet"
-                    className="text-slate-900"
-                  >
-                    Violet
-                  </option>
-
-                  <option
-                    value="orange"
-                    className="text-slate-900"
-                  >
-                    Orange
-                  </option>
-
-                  <option
-                    value="rose"
-                    className="text-slate-900"
-                  >
-                    Rose
-                  </option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(
-                      "/student-dashboard"
-                    )
-                  }
-                  className="rounded-xl bg-white px-5 py-3 text-xs font-black text-slate-900"
-                >
-                  ← Dashboard
-                </button>
-
-              </div>
-
-            </div>
-
-          </section>
-
-          {/* ERROR */}
-
-          {error && (
-            <section className="rounded-2xl border border-red-200 bg-red-50 p-4">
-
-              <p className="text-sm font-black text-red-800">
-                Result Centre
-              </p>
-
-              <p className="mt-1 text-xs text-red-700">
-                {
-                  error
-                }
-              </p>
-
-            </section>
-          )}
-
-          {!results.length ? (
-            <Card>
-
-              <div className="p-14 text-center">
-
-                <div className="text-5xl">
-                  📄
-                </div>
-
-                <h2 className="mt-4 text-xl font-black text-slate-800">
-                  No Published Result Found
-                </h2>
-
-                <p className="mx-auto mt-2 max-w-lg text-xs leading-5 text-slate-500">
-                  Your result will appear automatically after
-                  the school publishes it.
-                </p>
-
-              </div>
-
-            </Card>
-          ) : (
-            <>
-              {/* RESULT CONTROLS */}
-
-              <Card cls="p-5">
-
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-
-                  <div>
-
-                    <p className="text-[9px] font-black uppercase tracking-[.2em] text-[var(--student-primary)]">
-                      Result Views
-                    </p>
-
-                    <h2 className="mt-1 text-xl font-black text-slate-900">
-                      Choose Examination
-                    </h2>
-
-                  </div>
-
-                  <div className="flex flex-col gap-2 lg:flex-row">
-
-                    <div className="flex rounded-xl bg-slate-100 p-1">
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMode(
-                            "INDIVIDUAL"
-                          )
-                        }
-                        className={`rounded-lg px-4 py-2 text-[10px] font-black ${
-                          mode ===
-                          "INDIVIDUAL"
-                            ? "bg-white text-[var(--student-primary)] shadow-sm"
-                            : "text-slate-500"
-                        }`}
-                      >
-                        Individual Exams
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMode(
-                            "CONSOLIDATED"
-                          )
-                        }
-                        disabled={
-                          !finalModel.result
-                        }
-                        className={`rounded-lg px-4 py-2 text-[10px] font-black ${
-                          mode ===
-                          "CONSOLIDATED"
-                            ? "bg-white text-[var(--student-primary)] shadow-sm"
-                            : "text-slate-500"
-                        } disabled:cursor-not-allowed disabled:opacity-40`}
-                      >
-                        Final Result
-                      </button>
-
-                    </div>
-
-                    <input
-                      value={
-                        search
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setSearch(
-                          event.target
-                            .value
-                        )
-                      }
-                      placeholder="Search examination…"
-                      className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold outline-none focus:border-[var(--student-primary)]"
-                    />
-
-                    {mode ===
-                      "INDIVIDUAL" && (
-                      <select
-                        value={
-                          selectedId
-                        }
-                        onChange={(
-                          event
-                        ) =>
-                          setSelectedId(
-                            event.target
-                              .value
-                          )
-                        }
-                        className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black outline-none"
-                      >
-                        {filteredResults.map(
-                          (
-                            item
-                          ) => (
-                            <option
-                              key={
-                                item.id
-                              }
-                              value={
-                                item.id
-                              }
-                            >
-                              {
-                                resultTitle(
-                                  item
-                                )
-                              }{" "}
-                              •{" "}
-                              {
-                                resultType(
-                                  item
-                                )
-                              }
-                            </option>
-                          )
-                        )}
-                      </select>
-                    )}
-
-                  </div>
-
-                </div>
-
-                {/* 3 EXAM STATUS */}
-
-                {mode ===
-                  "CONSOLIDATED" &&
-                  !finalModel.official && (
-                    <div className="mt-4 rounded-2xl bg-[var(--student-soft)] p-4">
-
-                      <p className="text-[9px] font-black uppercase tracking-[.2em] text-[var(--student-text)]">
-                        Final Consolidation
-                      </p>
-
-                      <p className="mt-1 text-sm font-black text-slate-900">
-                        {finalModel.exams.length}
-                        /3 examinations published
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-
-                        {finalModel.exams.map(
-                          (
-                            exam
-                          ) => (
-                            <span
-                              key={
-                                exam.id
-                              }
-                              className="rounded-full bg-white px-3 py-1.5 text-[9px] font-black text-slate-700 shadow-sm"
-                            >
-                              {
-                                resultTitle(
-                                  exam
-                                )
-                              }
-                            </span>
-                          )
-                        )}
-
-                      </div>
-
-                      {!finalModel.ready && (
-                        <p className="mt-3 text-[10px] font-bold text-amber-700">
-                          Final PASS/FAIL, total and percentage will
-                          remain PENDING until all three examinations
-                          are complete and published.
-                        </p>
-                      )}
-
-                    </div>
-                  )}
-
-              </Card>
-
-              {/* RESULT */}
-
-              {activeResult &&
-              activeSummary ? (
-                <>
-                  <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-
-                    <Stat
-                      label="Examination"
-                      value={resultTitle(
-                        activeResult
-                      )}
-                      tone="green"
-                    />
-
-                    <Stat
-                      label="Type"
-                      value={
-                        mode ===
-                        "CONSOLIDATED"
-                          ? "FINAL"
-                          : resultType(
-                              activeResult
-                            )
-                      }
-                      tone="blue"
-                    />
-
-                    <Stat
-                      label="Total Marks"
-                      value={
-                        activeComplete
-                          ? `${num(
-                              activeSummary.obtainedMarks
-                            )}/${num(
-                              activeSummary.maxMarks
-                            )}`
-                          : "PENDING"
-                      }
-                      tone={
-                        activeComplete
-                          ? "slate"
-                          : "pending"
-                      }
-                    />
-
-                    <Stat
-                      label="Percentage"
-                      value={
-                        activeComplete
-                          ? `${num(
-                              activeSummary.percentage
-                            ).toFixed(
-                              2
-                            )}%`
-                          : "PENDING"
-                      }
-                      tone="violet"
-                    />
-
-                    <Stat
-                      label="Overall Grade"
-                      value={
-                        activeComplete
-                          ? activeSummary.grade
-                          : "PENDING"
-                      }
-                      tone="green"
-                    />
-
-                    <Stat
-                      label="Overall Rank"
-                      value={
-                        activeComplete
-                          ? activeResult.rank ||
-                            "—"
-                          : "PENDING"
-                      }
-                      tone="amber"
-                    />
-
-                  </section>
-
-                  {/* PENDING BANNER */}
-
-                  {!activeComplete && (
-                    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-
-                      <div className="flex gap-3">
-
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
-                          ⏳
-                        </div>
-
-                        <div>
-
-                          <p className="text-sm font-black text-amber-900">
-                            Result Pending
-                          </p>
-
-                          <p className="mt-1 text-[10px] leading-5 text-amber-800">
-                            All required marks for this examination
-                            have not been completely published yet.
-                            Until then PASS/FAIL, final grade and
-                            percentage will remain pending.
-                          </p>
-
-                        </div>
-
-                      </div>
-
-                    </section>
-                  )}
-
-                  <Card cls="p-6">
-
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-
-                      <div>
-
-                        <p className="text-[9px] font-black uppercase tracking-[.2em] text-[var(--student-primary)]">
-                          Structured Mark Sheet
-                        </p>
-
-                        <h2 className="mt-1 text-2xl font-black text-slate-900">
-                          {
-                            resultTitle(
-                              activeResult
-                            )
-                          }
-                        </h2>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          {
-                            studentName(
-                              student
-                            )
-                          }{" "}
-                          •{" "}
-                          {
-                            className(
-                              student
-                            )
-                          }{" "}
-                          -{" "}
-                          {
-                            section(
-                              student
-                            )
-                          }{" "}
-                          •{" "}
-                          {
-                            session(
-                              student
-                            )
-                          }
-                        </p>
-
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-
-                        <StatusBadge
-                          status={
-                            activeStatus
-                          }
-                        />
-
-                        {activeComplete && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={
-                                verifyOnline
-                              }
-                              className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[10px] font-black text-violet-700"
-                            >
-                              🔐 Verify
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={
-                                printResult
-                              }
-                              className="rounded-xl bg-slate-900 px-4 py-3 text-[10px] font-black text-white"
-                            >
-                              🖨️ Print
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={
-                                downloadPdf
-                              }
-                              className="rounded-xl bg-[var(--student-primary)] px-4 py-3 text-[10px] font-black text-white"
-                            >
-                              ⬇️ Download PDF
-                            </button>
-                          </>
-                        )}
-
-                      </div>
-
-                    </div>
-
-                    <div className="mt-6">
-
-                      <ResultTable
-                        result={
-                          activeResult
-                        }
-                        consolidated={
-                          mode ===
-                          "CONSOLIDATED"
-                        }
-                      />
-
-                    </div>
-
-                  </Card>
-
-                  {/* COMPONENT TOTALS */}
-
-                  <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-                    <Stat
-                      label="Theory"
-                      value={
-                        activeComplete
-                          ? `${num(
-                              activeSummary.theoryObtained
-                            )}/${num(
-                              activeSummary.theoryMaximum
-                            )}`
-                          : "PENDING"
-                      }
-                    />
-
-                    <Stat
-                      label="Practical"
-                      value={
-                        activeComplete
-                          ? `${num(
-                              activeSummary.practicalObtained
-                            )}/${num(
-                              activeSummary.practicalMaximum
-                            )}`
-                          : "PENDING"
-                      }
-                      tone="blue"
-                    />
-
-                    <Stat
-                      label="Internal"
-                      value={
-                        activeComplete
-                          ? `${num(
-                              activeSummary.internalObtained
-                            )}/${num(
-                              activeSummary.internalMaximum
-                            )}`
-                          : "PENDING"
-                      }
-                      tone="violet"
-                    />
-
-                    <Stat
-                      label="Project"
-                      value={
-                        activeComplete
-                          ? `${num(
-                              activeSummary.projectObtained
-                            )}/${num(
-                              activeSummary.projectMaximum
-                            )}`
-                          : "PENDING"
-                      }
-                      tone="amber"
-                    />
-
-                  </section>
-
-                  {/* VERIFICATION */}
-
-                  <section className="grid gap-6 lg:grid-cols-[1fr_320px]">
-
-                    <Card cls="p-6">
-
-                      <p className="text-[9px] font-black uppercase tracking-[.2em] text-[var(--student-primary)]">
-                        Result Information
-                      </p>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-
-                        <Stat
-                          label="Division"
-                          value={
-                            activeComplete
-                              ? activeSummary.division
-                              : "PENDING"
-                          }
-                        />
-
-                        <Stat
-                          label="Passed Subjects"
-                          value={
-                            activeComplete
-                              ? activeSummary.passedSubjects
-                              : "PENDING"
-                          }
-                          tone="green"
-                        />
-
-                        <Stat
-                          label="Failed Subjects"
-                          value={
-                            activeComplete
-                              ? activeSummary.failedSubjects.length
-                              : "PENDING"
-                          }
-                          tone={
-                            activeComplete &&
-                            activeSummary
-                              .failedSubjects
-                              .length
-                              ? "red"
-                              : "green"
-                          }
-                        />
-
-                        <Stat
-                          label="Result Status"
-                          value={
-                            activeComplete
-                              ? activeStatus
-                              : "PENDING"
-                          }
-                          tone={
-                            activeComplete
-                              ? activeStatus ===
-                                "PASS"
-                                ? "green"
-                                : "red"
-                              : "pending"
-                          }
-                        />
-
-                      </div>
-
-                    </Card>
-
-                    <Card cls="p-5 text-center">
-
-                      <p className="text-[9px] font-black uppercase tracking-[.2em] text-violet-600">
-                        Document Verification
-                      </p>
-
-                      {activeComplete &&
-                      qr ? (
-                        <img
-                          src={
-                            qr
-                          }
-                          alt="Result verification QR"
-                          className="mx-auto mt-4 h-44 w-44 rounded-xl border border-slate-200 bg-white p-2"
-                        />
-                      ) : (
-                        <div className="mx-auto mt-4 flex h-44 w-44 items-center justify-center rounded-xl bg-slate-50 text-[10px] font-black text-slate-400">
-                          {activeComplete
-                            ? "Generating QR…"
-                            : "QR available after completion"}
-                        </div>
-                      )}
-
-                      <p className="mt-3 text-[9px] leading-4 text-slate-500">
-                        The QR opens the verification record
-                        for this published result.
-                      </p>
-
-                    </Card>
-
-                  </section>
-                </>
-              ) : (
-                <Card>
-
-                  <div className="p-12 text-center">
-
-                    <div className="text-5xl">
-                      ⏳
-                    </div>
-
-                    <h2 className="mt-4 text-xl font-black text-slate-800">
-                      Final Result Pending
-                    </h2>
-
-                    <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
-                      Three complete examinations are required
-                      before the consolidated result is generated,
-                      unless the school publishes an official
-                      Annual/Final result.
-                    </p>
-
-                  </div>
-
-                </Card>
-              )}
-
-            </>
-          )}
-
-        </div>
-      </div>
-
-    </StudentLayout>
+  setFont(
+    5.8,
+    "normal",
+    COLORS.muted
   );
+
+  pdf.text(
+    `Published: ${dateText(
+      result?.publishedAt ||
+        result?.updatedAt
+    )}`,
+    MARGIN,
+    276
+  );
+
+
+  pdf.text(
+    `Document ID: ${safe(
+      resultId
+    )}`,
+    PAGE_W - MARGIN,
+    276,
+    {
+      align: "right",
+    }
+  );
+
+
+  /* =======================================================
+     FOOTER
+  ======================================================= */
+
+  /*
+   * Add temporary footer on first page.
+   * Page numbers are finalized below.
+   */
+
+  const totalPages =
+    pdf.getNumberOfPages();
+
+
+  for (
+    let page = 1;
+    page <= totalPages;
+    page++
+  ) {
+    pdf.setPage(
+      page
+    );
+
+    drawFooter(
+      page,
+      totalPages
+    );
+  }
+
+
+  /* =======================================================
+     METADATA
+  ======================================================= */
+
+  try {
+    pdf.setProperties({
+      title:
+        `${schoolName} - Student Marksheet`,
+      subject:
+        annual
+          ? "Final Annual Marksheet"
+          : "Official Student Marksheet",
+      author:
+        schoolName,
+      creator:
+        "XYZ School ERP",
+      keywords:
+        `result, marksheet, ${resultId}`,
+    });
+  } catch {
+    // Metadata is optional.
+  }
+
+
+  return pdf;
 }

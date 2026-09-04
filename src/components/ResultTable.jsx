@@ -1,332 +1,643 @@
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 
-/* =========================================================
-   RESULT TABLE
-   Smart subject-wise marks entry
+/*
+=========================================================
+ADVANCED RESULT TABLE
+=========================================================
 
-   IMPORTANT:
-   Props remain compatible with existing AddResult.jsx:
-   - subjects
-   - formData
-   - handleChange
-========================================================= */
+Compatible with existing AddResult.jsx:
 
-function ResultTable({
+subjects
+formData
+handleChange
+
+Supported components:
+
+- Theory
+- Practical
+- Internal
+- Project
+
+Features:
+
+- Automatic total
+- Automatic percentage
+- Automatic PASS / FAIL / PENDING
+- INVALID marks detection
+- Zero marks supported
+- Maximum marks validation
+- Passing marks validation
+- Live summary
+- Responsive table
+- Internal / Project ready
+- No Firebase
+- No navigation
+- No PDF
+=========================================================
+*/
+
+
+/* ========================================================
+   BASIC HELPERS
+======================================================== */
+
+const COMPONENTS = [
+  "theory",
+  "practical",
+  "internal",
+  "project",
+];
+
+
+function toNumber(value, fallback = 0) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : fallback;
+}
+
+
+function hasValue(value) {
+  return (
+    value !== undefined &&
+    value !== null &&
+    value !== ""
+  );
+}
+
+
+function formatNumber(value, digits = 2) {
+  const number = toNumber(value);
+
+  if (Number.isInteger(number)) {
+    return String(number);
+  }
+
+  return number.toFixed(digits);
+}
+
+
+/* ========================================================
+   COMPONENT CONFIG
+======================================================== */
+
+const COMPONENT_CONFIG = {
+  theory: {
+    label: "Theory",
+    maximumKey: "theoryMarks",
+    passingKey: "passingTheory",
+  },
+
+  practical: {
+    label: "Practical",
+    maximumKey: "practicalMarks",
+    passingKey: "passingPractical",
+  },
+
+  internal: {
+    label: "Internal",
+    maximumKey: "internalMarks",
+    passingKey: "passingInternal",
+  },
+
+  project: {
+    label: "Project",
+    maximumKey: "projectMarks",
+    passingKey: "passingProject",
+  },
+};
+
+
+/* ========================================================
+   SUBJECT HELPERS
+======================================================== */
+
+function getSubjectCode(subject) {
+  return (
+    subject?.subjectCode ||
+    subject?.code ||
+    subject?.id ||
+    ""
+  );
+}
+
+
+function getSubjectName(subject) {
+  return (
+    subject?.subjectName ||
+    subject?.name ||
+    subject?.subject ||
+    "Unnamed Subject"
+  );
+}
+
+
+function getMaximum(subject, type) {
+  const config =
+    COMPONENT_CONFIG[type];
+
+  if (!config) {
+    return 0;
+  }
+
+  return toNumber(
+    subject?.[config.maximumKey],
+    0
+  );
+}
+
+
+function getPassing(subject, type) {
+  const config =
+    COMPONENT_CONFIG[type];
+
+  if (!config) {
+    return 0;
+  }
+
+  return toNumber(
+    subject?.[config.passingKey],
+    0
+  );
+}
+
+
+/* ========================================================
+   ACTIVE COMPONENT
+======================================================== */
+
+function hasComponent(
+  subject,
+  type
+) {
+  return (
+    getMaximum(
+      subject,
+      type
+    ) > 0
+  );
+}
+
+
+function getActiveComponents(subject) {
+  return COMPONENTS.filter(
+    (type) =>
+      hasComponent(
+        subject,
+        type
+      )
+  );
+}
+
+
+/* ========================================================
+   ENTERED MARKS
+======================================================== */
+
+function getMarks(
+  subject,
+  formData,
+  type
+) {
+  const code =
+    getSubjectCode(subject);
+
+  return (
+    formData?.[code]?.[type] ??
+    ""
+  );
+}
+
+
+function isEntered(
+  subject,
+  formData,
+  type
+) {
+  return hasValue(
+    getMarks(
+      subject,
+      formData,
+      type
+    )
+  );
+}
+
+
+/* ========================================================
+   COMPONENT VALIDATION
+======================================================== */
+
+function validateComponent(
+  subject,
+  formData,
+  type
+) {
+  const maximum =
+    getMaximum(
+      subject,
+      type
+    );
+
+  const passing =
+    getPassing(
+      subject,
+      type
+    );
+
+  const raw =
+    getMarks(
+      subject,
+      formData,
+      type
+    );
+
+  /*
+   * Component not configured
+   */
+  if (maximum <= 0) {
+    return {
+      active: false,
+      entered: false,
+      valid: true,
+      passed: true,
+      marks: 0,
+      maximum: 0,
+      passing: 0,
+    };
+  }
+
+  /*
+   * Blank component
+   */
+  if (!hasValue(raw)) {
+    return {
+      active: true,
+      entered: false,
+      valid: true,
+      passed: false,
+      marks: 0,
+      maximum,
+      passing,
+    };
+  }
+
+  const marks =
+    toNumber(raw);
+
+  /*
+   * Negative marks
+   */
+  if (marks < 0) {
+    return {
+      active: true,
+      entered: true,
+      valid: false,
+      passed: false,
+      marks,
+      maximum,
+      passing,
+      error: "Marks cannot be negative",
+    };
+  }
+
+  /*
+   * Maximum exceeded
+   */
+  if (marks > maximum) {
+    return {
+      active: true,
+      entered: true,
+      valid: false,
+      passed: false,
+      marks,
+      maximum,
+      passing,
+      error: `Maximum ${maximum}`,
+    };
+  }
+
+  /*
+   * Passing marks
+   */
+  return {
+    active: true,
+    entered: true,
+    valid: true,
+    passed: marks >= passing,
+    marks,
+    maximum,
+    passing,
+  };
+}
+
+
+/* ========================================================
+   SUBJECT CALCULATION
+======================================================== */
+
+function calculateSubject(
+  subject,
+  formData
+) {
+  const components =
+    {};
+
+  const activeComponents =
+    getActiveComponents(
+      subject
+    );
+
+  let total = 0;
+  let maximum = 0;
+  let allEntered = true;
+  let allValid = true;
+  let allPassed = true;
+
+  activeComponents.forEach(
+    (type) => {
+      const result =
+        validateComponent(
+          subject,
+          formData,
+          type
+        );
+
+      components[type] =
+        result;
+
+      total += result.marks;
+      maximum += result.maximum;
+
+      if (!result.entered) {
+        allEntered = false;
+      }
+
+      if (!result.valid) {
+        allValid = false;
+      }
+
+      if (
+        result.entered &&
+        result.valid &&
+        !result.passed
+      ) {
+        allPassed = false;
+      }
+    }
+  );
+
+  /*
+   * No components configured
+   */
+  if (
+    activeComponents.length === 0
+  ) {
+    return {
+      components,
+      total: 0,
+      maximum: 0,
+      percentage: 0,
+      status: "PENDING",
+      activeComponents,
+    };
+  }
+
+  /*
+   * Invalid marks
+   */
+  if (!allValid) {
+    return {
+      components,
+      total,
+      maximum,
+      percentage:
+        maximum > 0
+          ? (total / maximum) * 100
+          : 0,
+      status: "INVALID",
+      activeComponents,
+    };
+  }
+
+  /*
+   * Some component still blank
+   */
+  if (!allEntered) {
+    return {
+      components,
+      total,
+      maximum,
+      percentage:
+        maximum > 0
+          ? (total / maximum) * 100
+          : 0,
+      status: "PENDING",
+      activeComponents,
+    };
+  }
+
+  /*
+   * All entered
+   */
+  const percentage =
+    maximum > 0
+      ? (total / maximum) * 100
+      : 0;
+
+  return {
+    components,
+    total,
+    maximum,
+    percentage,
+    status:
+      allPassed
+        ? "PASS"
+        : "FAIL",
+    activeComponents,
+  };
+}
+
+
+/* ========================================================
+   MAIN COMPONENT
+======================================================== */
+
+export default function ResultTable({
   subjects = [],
   formData = {},
   handleChange,
+
+  /*
+   * Optional flags
+   */
+  showTheory = true,
+  showPractical = true,
+  showInternal = true,
+  showProject = true,
+
+  compact = false,
 }) {
-  /* =======================================================
-     HELPERS
-  ======================================================= */
+  const safeSubjects =
+    Array.isArray(subjects)
+      ? subjects
+      : [];
 
-  const getMarks = (
-    subject,
-    type
-  ) => {
-    const value =
-      formData?.[
-        subject.subjectCode
-      ]?.[type];
 
-    if (
-      value === "" ||
-      value === null ||
-      value === undefined
-    ) {
-      return 0;
-    }
+  /* ======================================================
+     ENABLED COMPONENTS
+  ====================================================== */
 
-    return Number(value);
+  const componentEnabled = {
+    theory: showTheory,
+    practical: showPractical,
+    internal: showInternal,
+    project: showProject,
   };
 
-  const getTheory = (
-    subject
-  ) => {
-    return getMarks(
-      subject,
-      "theory"
-    );
-  };
 
-  const getPractical = (
-    subject
-  ) => {
-    return getMarks(
-      subject,
-      "practical"
-    );
-  };
+  /* ======================================================
+     LIVE CALCULATIONS
+  ====================================================== */
 
-  const getTotal = (
-    subject
-  ) => {
-    return (
-      getTheory(subject) +
-      getPractical(subject)
-    );
-  };
-
-  const getMaximum = (
-    subject
-  ) => {
-    return Number(
-      subject.totalMarks || 0
-    );
-  };
-
-  const getPercentage = (
-    subject
-  ) => {
-    const maximum =
-      getMaximum(subject);
-
-    if (!maximum) return 0;
-
-    return Number(
-      (
-        (getTotal(subject) /
-          maximum) *
-        100
-      ).toFixed(1)
-    );
-  };
-
-  const hasTheory =
-    (subject) =>
-      Number(
-        subject.theoryMarks || 0
-      ) > 0;
-
-  const hasPractical =
-    (subject) =>
-      Number(
-        subject.practicalMarks || 0
-      ) > 0;
-
-  const getStatus = (
-    subject
-  ) => {
-    const theory =
-      getTheory(subject);
-
-    const practical =
-      getPractical(subject);
-
-    const theoryMaximum =
-      Number(
-        subject.theoryMarks || 0
+  const calculatedSubjects =
+    useMemo(() => {
+      return safeSubjects.map(
+        (subject) => ({
+          subject,
+          calculation:
+            calculateSubject(
+              subject,
+              formData
+            ),
+        })
       );
+    }, [
+      safeSubjects,
+      formData,
+    ]);
 
-    const practicalMaximum =
-      Number(
-        subject.practicalMarks || 0
-      );
 
-    const passingTheory =
-      Number(
-        subject.passingTheory || 0
-      );
-
-    const passingPractical =
-      Number(
-        subject.passingPractical || 0
-      );
-
-    const theoryEntered =
-      formData?.[
-        subject.subjectCode
-      ]?.theory !== "" &&
-      formData?.[
-        subject.subjectCode
-      ]?.theory !== undefined;
-
-    const practicalEntered =
-      formData?.[
-        subject.subjectCode
-      ]?.practical !== "" &&
-      formData?.[
-        subject.subjectCode
-      ]?.practical !== undefined;
-
-    /* Nothing entered */
-
-    if (
-      !theoryEntered &&
-      !practicalEntered
-    ) {
-      return "PENDING";
-    }
-
-    /* Maximum exceeded */
-
-    if (
-      theory > theoryMaximum ||
-      practical > practicalMaximum
-    ) {
-      return "INVALID";
-    }
-
-    /* Theory passing requirement */
-
-    if (
-      hasTheory(subject) &&
-      theory < passingTheory
-    ) {
-      return "FAIL";
-    }
-
-    /* Practical passing requirement */
-
-    if (
-      hasPractical(subject) &&
-      practical < passingPractical
-    ) {
-      return "FAIL";
-    }
-
-    return "PASS";
-  };
-
-  /* =======================================================
-     INPUT VALIDATION
-  ======================================================= */
-
-  const isExceeded = (
-    subject,
-    type
-  ) => {
-    const value =
-      getMarks(
-        subject,
-        type
-      );
-
-    const maximum =
-      Number(
-        subject[
-          type === "theory"
-            ? "theoryMarks"
-            : "practicalMarks"
-        ] || 0
-      );
-
-    return value > maximum;
-  };
-
-  const handleMarksChange = (
-    subject,
-    type,
-    value
-  ) => {
-    /*
-      Do not silently modify the value here.
-      AddResult.jsx remains the source of truth for
-      updating formData.
-    */
-
-    handleChange(
-      subject.subjectCode,
-      type,
-      value
-    );
-  };
-
-  /* =======================================================
+  /* ======================================================
      SUMMARY
-  ======================================================= */
+  ====================================================== */
 
-  const summary = useMemo(() => {
-    let entered = 0;
-    let passed = 0;
-    let failed = 0;
-    let invalid = 0;
-    let obtained = 0;
-    let maximum = 0;
+  const summary =
+    useMemo(() => {
+      let entered = 0;
+      let pending = 0;
+      let passed = 0;
+      let failed = 0;
+      let invalid = 0;
 
-    subjects.forEach(
-      (subject) => {
-        const status =
-          getStatus(subject);
+      let obtained = 0;
+      let maximum = 0;
 
-        const total =
-          getTotal(subject);
+      calculatedSubjects.forEach(
+        ({
+          calculation,
+        }) => {
+          obtained +=
+            calculation.total;
 
-        obtained += total;
+          maximum +=
+            calculation.maximum;
 
-        maximum +=
-          getMaximum(subject);
+          switch (
+            calculation.status
+          ) {
+            case "PASS":
+              entered++;
+              passed++;
+              break;
 
+            case "FAIL":
+              entered++;
+              failed++;
+              break;
+
+            case "INVALID":
+              invalid++;
+              break;
+
+            default:
+              pending++;
+          }
+        }
+      );
+
+      const percentage =
+        maximum > 0
+          ? (obtained / maximum) * 100
+          : 0;
+
+      return {
+        entered,
+        pending,
+        passed,
+        failed,
+        invalid,
+        obtained,
+        maximum,
+        percentage,
+      };
+    }, [
+      calculatedSubjects,
+    ]);
+
+
+  /* ======================================================
+     AVAILABLE COLUMNS
+  ====================================================== */
+
+  const visibleComponents =
+    COMPONENTS.filter(
+      (type) => {
         if (
-          status !== "PENDING"
+          !componentEnabled[type]
         ) {
-          entered++;
+          return false;
         }
 
-        if (
-          status === "PASS"
-        ) {
-          passed++;
-        }
-
-        if (
-          status === "FAIL"
-        ) {
-          failed++;
-        }
-
-        if (
-          status === "INVALID"
-        ) {
-          invalid++;
-        }
+        return safeSubjects.some(
+          (subject) =>
+            hasComponent(
+              subject,
+              type
+            )
+        );
       }
     );
 
-    const percentage =
-      maximum > 0
-        ? Number(
-            (
-              (obtained /
-                maximum) *
-              100
-            ).toFixed(2)
-          )
-        : 0;
 
-    return {
-      entered,
-      passed,
-      failed,
-      invalid,
-      obtained,
-      maximum,
-      percentage,
-    };
-  }, [
-    subjects,
-    formData,
-  ]);
+  /* ======================================================
+     EMPTY
+  ====================================================== */
 
-  /* =======================================================
-     EMPTY STATE
-  ======================================================= */
-
-  if (!subjects.length) {
+  if (!safeSubjects.length) {
     return (
-      <div className="mb-8 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+      <div className="mb-8 rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
 
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-3xl">
           📚
         </div>
 
-        <h2 className="mt-4 text-xl font-extrabold text-slate-800">
+        <h2 className="mt-4 text-xl font-black text-slate-800">
           No Subjects Available
         </h2>
 
         <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-          Subjects for this student's class have not
-          been configured yet. Please configure subjects
+          Subjects for this class have not been
+          configured yet. Please configure them
           from Subject Management first.
         </p>
 
@@ -334,48 +645,77 @@ function ResultTable({
     );
   }
 
-  /* =======================================================
-     UI
-  ======================================================= */
+
+  /* ======================================================
+     MARKS CHANGE
+  ====================================================== */
+
+  const onMarksChange = (
+    subject,
+    type,
+    value
+  ) => {
+    if (
+      typeof handleChange !==
+      "function"
+    ) {
+      return;
+    }
+
+    handleChange(
+      getSubjectCode(
+        subject
+      ),
+      type,
+      value
+    );
+  };
+
+
+  /* ======================================================
+     RENDER
+  ====================================================== */
 
   return (
     <div className="mb-8 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
 
-      {/* =================================================
-          HEADER
-      ================================================= */}
 
-      <div className="border-b border-slate-200 bg-gradient-to-r from-green-800 to-emerald-700 p-6 text-white">
+      {/* ==================================================
+         HEADER
+      ================================================== */}
+
+      <div className="bg-gradient-to-r from-green-900 via-emerald-800 to-green-700 p-6 text-white">
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
           <div>
 
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[10px] font-bold">
-              📝 RESULT ENTRY
+            <div className="mb-2 inline-flex rounded-full bg-white/10 px-3 py-1 text-[9px] font-black uppercase tracking-widest">
+              📝 Result Entry
             </div>
 
-            <h2 className="text-2xl font-extrabold">
+            <h2 className="text-2xl font-black">
               Subject-wise Marks
             </h2>
 
-            <p className="mt-1 max-w-xl text-xs leading-5 text-green-100">
-              Enter marks carefully. Total marks and
-              subject status are calculated automatically.
+            <p className="mt-1 max-w-xl text-xs leading-5 text-emerald-100">
+              Enter marks for every configured
+              component. Total, percentage and
+              subject status are calculated
+              automatically.
             </p>
 
           </div>
 
-          {/* SUBJECT COUNT */}
 
           <div className="rounded-2xl border border-white/20 bg-white/10 px-6 py-4 backdrop-blur">
 
-            <p className="text-[10px] font-bold uppercase tracking-wider text-green-100">
+            <p className="text-[9px] font-black uppercase tracking-wider text-emerald-100">
               Total Subjects
             </p>
 
-            <p className="mt-1 text-3xl font-extrabold">
-              {subjects.length}
+            <p className="mt-1 text-3xl font-black">
+              {safeSubjects.length}
             </p>
 
           </div>
@@ -384,67 +724,79 @@ function ResultTable({
 
       </div>
 
-      {/* =================================================
-          LIVE SUMMARY
-      ================================================= */}
 
-      <div className="grid border-b border-slate-200 bg-slate-50 sm:grid-cols-2 lg:grid-cols-5">
+      {/* ==================================================
+         LIVE SUMMARY
+      ================================================== */}
+
+      <div className="grid border-b border-slate-200 bg-slate-50 sm:grid-cols-2 lg:grid-cols-6">
 
         <SummaryItem
-          label="Entered"
-          value={`${summary.entered}/${subjects.length}`}
           icon="✏️"
+          label="Entered"
+          value={`${summary.entered}/${safeSubjects.length}`}
         />
 
         <SummaryItem
+          icon="⏳"
+          label="Pending"
+          value={summary.pending}
+          amber
+        />
+
+        <SummaryItem
+          icon="✓"
           label="Passed"
           value={summary.passed}
-          icon="✅"
           green
         />
 
         <SummaryItem
+          icon="!"
           label="Failed"
           value={summary.failed}
-          icon="❌"
           red
         />
 
         <SummaryItem
-          label="Marks"
-          value={`${summary.obtained}/${summary.maximum}`}
-          icon="📊"
+          icon="⚠"
+          label="Invalid"
+          value={summary.invalid}
+          red={summary.invalid > 0}
         />
 
         <SummaryItem
+          icon="%"
           label="Current %"
-          value={`${summary.percentage}%`}
-          icon="📈"
+          value={`${formatNumber(
+            summary.percentage
+          )}%`}
           blue
         />
 
       </div>
 
-      {/* =================================================
-          INVALID WARNING
-      ================================================= */}
+
+      {/* ==================================================
+         INVALID WARNING
+      ================================================== */}
 
       {summary.invalid > 0 && (
-        <div className="mx-5 mt-5 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+        <div className="mx-5 mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
 
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-lg">
             ⚠️
           </div>
 
           <div>
 
-            <p className="text-xs font-extrabold text-red-700">
-              Marks need attention
+            <p className="text-sm font-black text-red-700">
+              Invalid marks detected
             </p>
 
-            <p className="mt-1 text-[11px] leading-5 text-red-600">
-              One or more entered marks are greater than
-              the maximum marks configured for that subject.
+            <p className="mt-1 text-xs leading-5 text-red-600">
+              One or more marks exceed the configured
+              maximum or contain an invalid value.
               Correct them before saving the result.
             </p>
 
@@ -453,51 +805,66 @@ function ResultTable({
         </div>
       )}
 
-      {/* =================================================
-          TABLE
-      ================================================= */}
+
+      {/* ==================================================
+         TABLE
+      ================================================== */}
 
       <div className="p-5 sm:p-6">
 
         <div className="overflow-x-auto rounded-2xl border border-slate-200">
 
-          <table className="min-w-[1050px] w-full border-collapse">
+          <table
+            className={[
+              "w-full border-collapse",
+              "min-w-[1100px]",
+            ].join(" ")}
+          >
 
             {/* TABLE HEADER */}
 
             <thead>
 
-              <tr className="bg-slate-900 text-white">
+              <tr className="bg-slate-950 text-white">
 
-                <th className="px-4 py-4 text-left text-[10px] font-extrabold uppercase tracking-wider">
+                <th className="px-4 py-4 text-left text-[9px] font-black uppercase tracking-wider">
                   #
                 </th>
 
-                <th className="px-4 py-4 text-left text-[10px] font-extrabold uppercase tracking-wider">
+                <th className="px-4 py-4 text-left text-[9px] font-black uppercase tracking-wider">
                   Subject
                 </th>
 
-                <th className="px-4 py-4 text-center text-[10px] font-extrabold uppercase tracking-wider">
+                <th className="px-4 py-4 text-center text-[9px] font-black uppercase tracking-wider">
                   Code
                 </th>
 
-                <th className="px-4 py-4 text-center text-[10px] font-extrabold uppercase tracking-wider">
-                  Theory
-                </th>
+                {visibleComponents.map(
+                  (type) => (
+                    <th
+                      key={type}
+                      className="px-4 py-4 text-center text-[9px] font-black uppercase tracking-wider"
+                    >
+                      {COMPONENT_CONFIG[
+                        type
+                      ].label}
+                    </th>
+                  )
+                )}
 
-                <th className="px-4 py-4 text-center text-[10px] font-extrabold uppercase tracking-wider">
-                  Practical
-                </th>
-
-                <th className="px-4 py-4 text-center text-[10px] font-extrabold uppercase tracking-wider">
+                <th className="px-4 py-4 text-center text-[9px] font-black uppercase tracking-wider">
                   Total
                 </th>
 
-                <th className="px-4 py-4 text-center text-[10px] font-extrabold uppercase tracking-wider">
+                <th className="px-4 py-4 text-center text-[9px] font-black uppercase tracking-wider">
                   %
                 </th>
 
-                <th className="px-4 py-4 text-center text-[10px] font-extrabold uppercase tracking-wider">
+                <th className="px-4 py-4 text-center text-[9px] font-black uppercase tracking-wider">
+                  Grade
+                </th>
+
+                <th className="px-4 py-4 text-center text-[9px] font-black uppercase tracking-wider">
                   Status
                 </th>
 
@@ -505,83 +872,67 @@ function ResultTable({
 
             </thead>
 
+
             {/* TABLE BODY */}
 
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
 
-              {subjects.map(
-                (subject, index) => {
+              {calculatedSubjects.map(
+                ({
+                  subject,
+                  calculation,
+                },
+                index) => {
 
-                  const theory =
-                    getTheory(
+                  const code =
+                    getSubjectCode(
                       subject
                     );
 
-                  const practical =
-                    getPractical(
+                  const name =
+                    getSubjectName(
                       subject
                     );
 
-                  const total =
-                    getTotal(
-                      subject
-                    );
-
-                  const maximum =
-                    getMaximum(
-                      subject
-                    );
-
-                  const percentage =
-                    getPercentage(
-                      subject
-                    );
-
-                  const status =
-                    getStatus(
-                      subject
-                    );
-
-                  const theoryInvalid =
-                    isExceeded(
-                      subject,
-                      "theory"
-                    );
-
-                  const practicalInvalid =
-                    isExceeded(
-                      subject,
-                      "practical"
+                  const grade =
+                    getGrade(
+                      calculation
                     );
 
                   return (
                     <tr
                       key={
-                        subject.id ||
-                        subject.subjectCode ||
+                        code ||
+                        subject?.id ||
                         index
                       }
-                      className={`transition ${
-                        status ===
-                        "FAIL"
+                      className={[
+                        "border-b border-slate-100 transition",
+                        calculation.status ===
+                          "FAIL"
                           ? "bg-red-50/40"
-                          : status ===
+                          : calculation.status ===
                             "INVALID"
                           ? "bg-red-50"
-                          : "hover:bg-green-50/40"
-                      }`}
+                          : "hover:bg-emerald-50/40",
+                      ].join(" ")}
                     >
 
                       {/* NUMBER */}
 
-                      <td className="px-4 py-4 text-sm font-bold text-slate-400">
-                        {String(
-                          index + 1
-                        ).padStart(
-                          2,
-                          "0"
-                        )}
+                      <td className="px-4 py-4">
+
+                        <span className="text-sm font-black text-slate-400">
+                          {String(
+                            index + 1
+                          ).padStart(
+                            2,
+                            "0"
+                          )}
+                        </span>
+
                       </td>
+
 
                       {/* SUBJECT */}
 
@@ -589,39 +940,33 @@ function ResultTable({
 
                         <div className="min-w-[220px]">
 
-                          <p className="text-sm font-extrabold text-slate-800">
-                            {
-                              subject.subjectName
-                            }
+                          <p className="text-sm font-black text-slate-800">
+                            {name}
                           </p>
 
-                          <div className="mt-1 flex flex-wrap gap-2">
+                          <div className="mt-1 flex flex-wrap gap-1.5">
 
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">
-                              Max{" "}
-                              {maximum}
-                            </span>
-
-                            {hasTheory(
-                              subject
-                            ) && (
-                              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-600">
-                                Theory{" "}
-                                {
-                                  subject.theoryMarks
-                                }
-                              </span>
-                            )}
-
-                            {hasPractical(
-                              subject
-                            ) && (
-                              <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[9px] font-bold text-purple-600">
-                                Practical{" "}
-                                {
-                                  subject.practicalMarks
-                                }
-                              </span>
+                            {calculation.activeComponents.map(
+                              (type) => (
+                                <span
+                                  key={
+                                    type
+                                  }
+                                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[8px] font-bold text-slate-500"
+                                >
+                                  {
+                                    COMPONENT_CONFIG[
+                                      type
+                                    ].label
+                                  }{" "}
+                                  {
+                                    getMaximum(
+                                      subject,
+                                      type
+                                    )
+                                  }
+                                </span>
+                              )
                             )}
 
                           </div>
@@ -630,131 +975,176 @@ function ResultTable({
 
                       </td>
 
+
                       {/* CODE */}
 
                       <td className="px-4 py-4 text-center">
 
-                        <span className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs font-bold text-slate-600">
-                          {
-                            subject.subjectCode
-                          }
+                        <span className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-[10px] font-black text-slate-600">
+                          {code || "—"}
                         </span>
 
                       </td>
 
-                      {/* THEORY */}
 
-                      <td className="px-4 py-4">
+                      {/* COMPONENT INPUTS */}
 
-                        {hasTheory(
-                          subject
-                        ) ? (
-                          <MarksInput
-                            value={
-                              formData?.[
-                                subject
-                                  .subjectCode
-                              ]?.theory ??
-                              ""
-                            }
-                            maximum={
-                              subject.theoryMarks
-                            }
-                            passing={
-                              subject.passingTheory
-                            }
-                            invalid={
-                              theoryInvalid
-                            }
-                            onChange={(
-                              value
-                            ) =>
-                              handleMarksChange(
-                                subject,
-                                "theory",
-                                value
-                              )
-                            }
-                          />
-                        ) : (
-                          <DisabledInput />
-                        )}
+                      {visibleComponents.map(
+                        (type) => {
 
-                      </td>
+                          const component =
+                            validateComponent(
+                              subject,
+                              formData,
+                              type
+                            );
 
-                      {/* PRACTICAL */}
+                          if (
+                            !hasComponent(
+                              subject,
+                              type
+                            )
+                          ) {
+                            return (
+                              <td
+                                key={
+                                  type
+                                }
+                                className="px-4 py-4"
+                              >
+                                <DisabledInput />
+                              </td>
+                            );
+                          }
 
-                      <td className="px-4 py-4">
+                          return (
+                            <td
+                              key={
+                                type
+                              }
+                              className="px-4 py-4"
+                            >
 
-                        {hasPractical(
-                          subject
-                        ) ? (
-                          <MarksInput
-                            value={
-                              formData?.[
-                                subject
-                                  .subjectCode
-                              ]?.practical ??
-                              ""
-                            }
-                            maximum={
-                              subject.practicalMarks
-                            }
-                            passing={
-                              subject.passingPractical
-                            }
-                            invalid={
-                              practicalInvalid
-                            }
-                            onChange={(
-                              value
-                            ) =>
-                              handleMarksChange(
-                                subject,
-                                "practical",
-                                value
-                              )
-                            }
-                          />
-                        ) : (
-                          <DisabledInput />
-                        )}
+                              <MarksInput
+                                value={getMarks(
+                                  subject,
+                                  formData,
+                                  type
+                                )}
+                                maximum={
+                                  component.maximum
+                                }
+                                passing={
+                                  component.passing
+                                }
+                                invalid={
+                                  !component.valid
+                                }
+                                error={
+                                  component.error
+                                }
+                                onChange={(
+                                  value
+                                ) =>
+                                  onMarksChange(
+                                    subject,
+                                    type,
+                                    value
+                                  )
+                                }
+                              />
 
-                      </td>
+                            </td>
+                          );
+                        }
+                      )}
+
 
                       {/* TOTAL */}
 
                       <td className="px-4 py-4 text-center">
 
                         <p
-                          className={`text-xl font-extrabold ${
-                            status ===
-                            "FAIL"
+                          className={[
+                            "text-lg font-black",
+                            calculation.status ===
+                              "FAIL"
                               ? "text-red-600"
-                              : status ===
+                              : calculation.status ===
                                 "PASS"
-                              ? "text-green-700"
-                              : "text-slate-700"
-                          }`}
+                              ? "text-emerald-700"
+                              : calculation.status ===
+                                "INVALID"
+                              ? "text-red-600"
+                              : "text-slate-700",
+                          ].join(" ")}
                         >
-                          {total}
+                          {formatNumber(
+                            calculation.total
+                          )}
                         </p>
 
-                        <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                          / {maximum}
+                        <p className="text-[9px] font-bold text-slate-400">
+                          /{" "}
+                          {formatNumber(
+                            calculation.maximum
+                          )}
                         </p>
 
                       </td>
+
 
                       {/* PERCENTAGE */}
 
                       <td className="px-4 py-4 text-center">
 
-                        <span className="text-sm font-extrabold text-slate-700">
-                          {percentage}%
+                        {calculation.status ===
+                        "PENDING" ? (
+                          <span className="font-black text-slate-300">
+                            —
+                          </span>
+                        ) : (
+                          <span
+                            className="font-black"
+                            style={{
+                              color:
+                                calculation.status ===
+                                "FAIL"
+                                  ? "#dc2626"
+                                  : "#047857",
+                            }}
+                          >
+                            {formatNumber(
+                              calculation.percentage
+                            )}
+                            %
+                          </span>
+                        )}
+
+                      </td>
+
+
+                      {/* GRADE */}
+
+                      <td className="px-4 py-4 text-center">
+
+                        <span
+                          className={[
+                            "inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[10px] font-black",
+                            grade ===
+                              "F"
+                              ? "bg-red-100 text-red-700"
+                              : grade ===
+                                "—"
+                              ? "bg-slate-100 text-slate-400"
+                              : "bg-emerald-100 text-emerald-700",
+                          ].join(" ")}
+                        >
+                          {grade}
                         </span>
 
                       </td>
+
 
                       {/* STATUS */}
 
@@ -762,7 +1152,7 @@ function ResultTable({
 
                         <StatusBadge
                           status={
-                            status
+                            calculation.status
                           }
                         />
 
@@ -775,13 +1165,85 @@ function ResultTable({
 
             </tbody>
 
+
+            {/* =================================================
+               GRAND TOTAL
+            ================================================= */}
+
+            <tfoot>
+
+              <tr className="bg-emerald-50">
+
+                <td
+                  colSpan={
+                    3 +
+                    visibleComponents.length
+                  }
+                  className="px-4 py-5 text-left"
+                >
+
+                  <span className="text-sm font-black text-emerald-800">
+                    GRAND TOTAL
+                  </span>
+
+                </td>
+
+                <td className="px-4 py-5 text-center">
+
+                  <p className="font-black text-emerald-800">
+                    {formatNumber(
+                      summary.obtained
+                    )}
+                  </p>
+
+                  <p className="text-[9px] font-bold text-slate-400">
+                    /{" "}
+                    {formatNumber(
+                      summary.maximum
+                    )}
+                  </p>
+
+                </td>
+
+                <td className="px-4 py-5 text-center">
+
+                  <span className="font-black text-emerald-800">
+                    {formatNumber(
+                      summary.percentage
+                    )}
+                    %
+                  </span>
+
+                </td>
+
+                <td className="px-4 py-5 text-center">
+
+                  <span className="font-black text-emerald-800">
+                    {getOverallGrade(
+                      summary.percentage
+                    )}
+                  </span>
+
+                </td>
+
+                <td className="px-4 py-5 text-center">
+
+                  <StatusBadge
+                    status={getOverallStatus(
+                      summary
+                    )}
+                  />
+
+                </td>
+
+              </tr>
+
+            </tfoot>
+
           </table>
 
         </div>
 
-        {/* =================================================
-            MOBILE TABLE NOTE
-        ================================================= */}
 
         <p className="mt-3 text-center text-[10px] text-slate-400 lg:hidden">
           ← Swipe horizontally to view all marks columns →
@@ -789,38 +1251,37 @@ function ResultTable({
 
       </div>
 
-      {/* =================================================
-          INFORMATION CARDS
-      ================================================= */}
 
-      <div className="grid gap-4 border-t border-slate-200 bg-slate-50 p-5 sm:grid-cols-3 sm:p-6">
+      {/* ==================================================
+         INFORMATION
+      ================================================== */}
+
+      <div className="grid gap-4 border-t border-slate-200 bg-slate-50 p-5 sm:grid-cols-3">
 
         <InfoCard
           icon="📘"
-          title="Theory"
-          text="Enter theory marks according to the maximum marks configured for the subject."
-          className="border-blue-100 bg-blue-50/60"
-        />
-
-        <InfoCard
-          icon="🧪"
-          title="Practical"
-          text="Subjects without practical marks are automatically shown as unavailable."
-          className="border-purple-100 bg-purple-50/60"
+          title="Maximum Marks"
+          text="Maximum marks and passing marks are taken from Subject Management."
         />
 
         <InfoCard
           icon="⚡"
-          title="Automatic"
-          text="Total, percentage and subject status update instantly while entering marks."
-          className="border-green-100 bg-green-50/60"
+          title="Live Calculation"
+          text="Total, percentage, grade and status update automatically while entering marks."
+        />
+
+        <InfoCard
+          icon="🛡️"
+          title="Validation"
+          text="Blank components remain pending and marks above the configured maximum are blocked from being treated as valid."
         />
 
       </div>
 
-      {/* =================================================
-          INSTRUCTIONS
-      ================================================= */}
+
+      {/* ==================================================
+         GUIDELINES
+      ================================================== */}
 
       <div className="border-t border-slate-200 p-5 sm:p-6">
 
@@ -834,30 +1295,38 @@ function ResultTable({
 
             <div>
 
-              <h3 className="text-sm font-extrabold text-amber-800">
+              <h3 className="text-sm font-black text-amber-800">
                 Marks Entry Guidelines
               </h3>
 
               <ul className="mt-3 space-y-2 text-[11px] leading-5 text-amber-700">
 
                 <li>
-                  • Maximum marks are taken from Subject Management.
+                  • Maximum marks come from Subject Management.
                 </li>
 
                 <li>
-                  • Passing marks are used for automatic PASS/FAIL calculation.
+                  • Passing marks are checked separately for each configured component.
                 </li>
 
                 <li>
-                  • Marks above the configured maximum will be flagged.
+                  • Zero is a valid marks entry.
                 </li>
 
                 <li>
-                  • Empty subjects remain in PENDING status.
+                  • Blank components remain PENDING.
                 </li>
 
                 <li>
-                  • Overall percentage, grade and final result are generated separately.
+                  • Marks above the maximum are marked INVALID.
+                </li>
+
+                <li>
+                  • A subject passes only when all configured components meet their passing requirement.
+                </li>
+
+                <li>
+                  • Final result publication should remain controlled by the Admin.
                 </li>
 
               </ul>
@@ -874,6 +1343,115 @@ function ResultTable({
   );
 }
 
+
+/* =========================================================
+   GRADE
+========================================================= */
+
+function getGrade(
+  calculation
+) {
+  if (
+    calculation.status ===
+      "PENDING" ||
+    calculation.status ===
+      "INVALID"
+  ) {
+    return "—";
+  }
+
+  return getGradeFromPercentage(
+    calculation.percentage
+  );
+}
+
+
+function getGradeFromPercentage(
+  percentage
+) {
+  if (percentage >= 90) {
+    return "A+";
+  }
+
+  if (percentage >= 80) {
+    return "A";
+  }
+
+  if (percentage >= 70) {
+    return "B+";
+  }
+
+  if (percentage >= 60) {
+    return "B";
+  }
+
+  if (percentage >= 50) {
+    return "C";
+  }
+
+  if (percentage >= 40) {
+    return "D";
+  }
+
+  return "F";
+}
+
+
+/* =========================================================
+   OVERALL GRADE
+========================================================= */
+
+function getOverallGrade(
+  percentage
+) {
+  if (
+    percentage <= 0
+  ) {
+    return "—";
+  }
+
+  return getGradeFromPercentage(
+    percentage
+  );
+}
+
+
+/* =========================================================
+   OVERALL STATUS
+========================================================= */
+
+function getOverallStatus(
+  summary
+) {
+  if (
+    summary.invalid > 0
+  ) {
+    return "INVALID";
+  }
+
+  if (
+    summary.pending > 0
+  ) {
+    return "PENDING";
+  }
+
+  if (
+    summary.failed > 0
+  ) {
+    return "FAIL";
+  }
+
+  if (
+    summary.passed ===
+      0
+  ) {
+    return "PENDING";
+  }
+
+  return "PASS";
+}
+
+
 /* =========================================================
    MARKS INPUT
 ========================================================= */
@@ -883,53 +1461,51 @@ function MarksInput({
   maximum,
   passing,
   invalid,
+  error,
   onChange,
 }) {
   return (
-    <div className="min-w-[135px]">
+    <div className="min-w-[130px]">
 
-      <div className="relative">
-
-        <input
-          type="number"
-          min="0"
-          max={maximum}
-          step="1"
-          value={value}
-          onChange={(event) =>
-            onChange(
-              event.target.value
-            )
-          }
-          onWheel={(event) =>
-            event.currentTarget.blur()
-          }
-          className={`w-full rounded-xl border-2 bg-white px-3 py-2.5 text-center text-sm font-bold outline-none transition ${
-            invalid
-              ? "border-red-400 bg-red-50 text-red-700 focus:border-red-500"
-              : "border-slate-200 text-slate-700 focus:border-green-500 focus:ring-2 focus:ring-green-100"
-          }`}
-          placeholder="0"
-          aria-label="Marks"
-        />
-
-      </div>
+      <input
+        type="number"
+        min="0"
+        max={maximum}
+        step="1"
+        value={value}
+        onChange={(event) =>
+          onChange(
+            event.target.value
+          )
+        }
+        onWheel={(event) =>
+          event.currentTarget.blur()
+        }
+        className={[
+          "w-full rounded-xl border-2 bg-white px-3 py-2.5 text-center text-sm font-black outline-none transition",
+          invalid
+            ? "border-red-400 bg-red-50 text-red-700 focus:border-red-500"
+            : "border-slate-200 text-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100",
+        ].join(" ")}
+        placeholder="0"
+        aria-label="Marks"
+      />
 
       <div className="mt-1.5 flex justify-between px-1">
 
-        <span className="text-[9px] font-semibold text-slate-400">
+        <span className="text-[8px] font-bold text-slate-400">
           Max: {maximum}
         </span>
 
-        <span className="text-[9px] font-semibold text-green-600">
-          Pass: {passing || 0}
+        <span className="text-[8px] font-bold text-emerald-600">
+          Pass: {passing}
         </span>
 
       </div>
 
       {invalid && (
-        <p className="mt-1 text-center text-[9px] font-bold text-red-600">
-          Exceeds maximum
+        <p className="mt-1 text-center text-[8px] font-black text-red-600">
+          {error || "Invalid marks"}
         </p>
       )}
 
@@ -937,25 +1513,27 @@ function MarksInput({
   );
 }
 
+
 /* =========================================================
    DISABLED INPUT
 ========================================================= */
 
 function DisabledInput() {
   return (
-    <div className="min-w-[135px]">
+    <div className="min-w-[130px]">
 
-      <div className="flex h-[43px] items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-xs font-bold text-slate-300">
+      <div className="flex h-[43px] items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-xs font-black text-slate-300">
         N/A
       </div>
 
-      <p className="mt-1.5 text-center text-[9px] text-slate-400">
-        Not applicable
+      <p className="mt-1.5 text-center text-[8px] font-bold text-slate-400">
+        Not configured
       </p>
 
     </div>
   );
 }
+
 
 /* =========================================================
    STATUS BADGE
@@ -969,28 +1547,28 @@ function StatusBadge({
       icon: "✓",
       text: "PASS",
       className:
-        "bg-green-100 text-green-700 border-green-200",
+        "border-emerald-200 bg-emerald-100 text-emerald-700",
     },
 
     FAIL: {
       icon: "!",
       text: "FAIL",
       className:
-        "bg-red-100 text-red-700 border-red-200",
+        "border-red-200 bg-red-100 text-red-700",
     },
 
     INVALID: {
       icon: "⚠",
       text: "INVALID",
       className:
-        "bg-red-100 text-red-700 border-red-200",
+        "border-red-200 bg-red-100 text-red-700",
     },
 
     PENDING: {
       icon: "○",
       text: "PENDING",
       className:
-        "bg-slate-100 text-slate-500 border-slate-200",
+        "border-amber-200 bg-amber-50 text-amber-700",
     },
   };
 
@@ -1000,7 +1578,10 @@ function StatusBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-extrabold ${current.className}`}
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[9px] font-black",
+        current.className,
+      ].join(" ")}
     >
       <span>
         {current.icon}
@@ -1011,24 +1592,26 @@ function StatusBadge({
   );
 }
 
+
 /* =========================================================
    SUMMARY ITEM
 ========================================================= */
 
 function SummaryItem({
+  icon,
   label,
   value,
-  icon,
   green,
   red,
   blue,
+  amber,
 }) {
   let valueClass =
     "text-slate-800";
 
   if (green) {
     valueClass =
-      "text-green-700";
+      "text-emerald-700";
   }
 
   if (red) {
@@ -1041,8 +1624,13 @@ function SummaryItem({
       "text-blue-700";
   }
 
+  if (amber) {
+    valueClass =
+      "text-amber-700";
+  }
+
   return (
-    <div className="border-b border-slate-200 px-4 py-4 last:border-b-0 sm:border-r lg:border-b-0">
+    <div className="border-b border-slate-200 px-4 py-4 sm:border-r lg:border-b-0">
 
       <div className="flex items-center gap-2">
 
@@ -1050,14 +1638,17 @@ function SummaryItem({
           {icon}
         </span>
 
-        <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+        <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">
           {label}
         </p>
 
       </div>
 
       <p
-        className={`mt-1 text-lg font-extrabold ${valueClass}`}
+        className={[
+          "mt-1 text-lg font-black",
+          valueClass,
+        ].join(" ")}
       >
         {value}
       </p>
@@ -1065,6 +1656,7 @@ function SummaryItem({
     </div>
   );
 }
+
 
 /* =========================================================
    INFO CARD
@@ -1074,20 +1666,17 @@ function InfoCard({
   icon,
   title,
   text,
-  className = "",
 }) {
   return (
-    <div
-      className={`rounded-2xl border p-4 ${className}`}
-    >
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
 
       <div className="flex items-center gap-3">
 
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-50">
           {icon}
         </div>
 
-        <h3 className="text-xs font-extrabold text-slate-800">
+        <h3 className="text-xs font-black text-slate-800">
           {title}
         </h3>
 
@@ -1100,5 +1689,3 @@ function InfoCard({
     </div>
   );
 }
-
-export default ResultTable;

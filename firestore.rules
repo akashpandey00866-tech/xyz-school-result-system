@@ -1,0 +1,378 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* =====================================================
+       COMMON HELPERS
+    ===================================================== */
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.role == "admin";
+    }
+
+
+    function isTeacher() {
+      return signedIn()
+        && request.auth.token.role == "teacher";
+    }
+
+
+    function isStudent() {
+      return signedIn()
+        && request.auth.token.role == "student";
+    }
+
+
+    function isOwner(userId) {
+      return signedIn()
+        && request.auth.uid == userId;
+    }
+
+
+    /* =====================================================
+       RESULT DATA VALIDATION
+    ===================================================== */
+
+    function validResultFields() {
+      return request.resource.data.keys().hasOnly([
+        "studentId",
+        "studentName",
+        "admissionNumber",
+        "classId",
+        "className",
+        "section",
+        "teacherId",
+        "sessionId",
+        "sessionName",
+        "examinationId",
+        "examinationName",
+        "subjects",
+        "maximumMarks",
+        "obtainedMarks",
+        "percentage",
+        "grade",
+        "division",
+        "rank",
+        "teacherRemarks",
+        "adminRemarks",
+        "status",
+        "createdBy",
+        "createdByRole",
+        "createdAt",
+        "updatedAt",
+        "submittedBy",
+        "submittedAt",
+        "verifiedBy",
+        "verifiedAt",
+        "rejectedBy",
+        "rejectedAt",
+        "rejectionReason",
+        "publishedBy",
+        "publishedAt",
+        "unpublishedBy",
+        "unpublishedAt",
+        "unpublishReason",
+        "version"
+      ]);
+    }
+
+
+    function validStatus() {
+      return request.resource.data.status in [
+        "draft",
+        "submitted",
+        "verified",
+        "rejected",
+        "published"
+      ];
+    }
+
+
+    /* =====================================================
+       RESULTS
+    ===================================================== */
+
+    match /results/{resultId} {
+
+      /* -----------------------------------------------
+         READ
+      ------------------------------------------------ */
+
+      allow get: if
+        isAdmin()
+
+        ||
+
+        (
+          isTeacher()
+          &&
+          resource.data.teacherId ==
+            request.auth.uid
+        )
+
+        ||
+
+        (
+          isStudent()
+          &&
+          resource.data.studentId ==
+            request.auth.uid
+          &&
+          resource.data.status ==
+            "published"
+        );
+
+
+      /*
+       * List/query access.
+       *
+       * Student:
+       * only published own results.
+       *
+       * Teacher:
+       * only assigned results.
+       *
+       * Admin:
+       * all results.
+       */
+
+      allow list: if
+        isAdmin()
+
+        ||
+
+        isTeacher()
+
+        ||
+
+        isStudent();
+
+
+      /* -----------------------------------------------
+         CREATE
+      ------------------------------------------------ */
+
+      allow create: if
+        signedIn()
+        &&
+        (
+          isAdmin()
+          || isTeacher()
+        )
+        &&
+        validResultFields()
+        &&
+        validStatus()
+        &&
+        request.resource.data.createdBy ==
+          request.auth.uid
+        &&
+        request.resource.data.status ==
+          "draft"
+        &&
+        request.resource.data.version ==
+          1
+        &&
+        request.resource.data.studentId is string
+        &&
+        request.resource.data.studentId != "";
+
+
+      /* -----------------------------------------------
+         UPDATE
+      ------------------------------------------------ */
+
+      allow update: if
+        signedIn()
+        &&
+        validResultFields()
+
+        &&
+
+        (
+          /* ===========================================
+             ADMIN
+             =========================================== */
+
+          (
+            isAdmin()
+            &&
+            (
+              /*
+               * Admin can perform workflow
+               * transitions only through the
+               * allowed state machine.
+               */
+
+              (
+                resource.data.status ==
+                  "submitted"
+                &&
+                request.resource.data.status ==
+                  "verified"
+              )
+
+              ||
+
+              (
+                resource.data.status ==
+                  "submitted"
+                &&
+                request.resource.data.status ==
+                  "rejected"
+              )
+
+              ||
+
+              (
+                resource.data.status ==
+                  "verified"
+                &&
+                request.resource.data.status ==
+                  "published"
+              )
+
+              ||
+
+              (
+                resource.data.status ==
+                  "published"
+                &&
+                request.resource.data.status ==
+                  "verified"
+              )
+
+              ||
+
+              /*
+               * Admin may update a non-published
+               * result without changing workflow
+               * status.
+               */
+
+              (
+                resource.data.status in [
+                  "draft",
+                  "submitted",
+                  "verified",
+                  "rejected"
+                ]
+                &&
+                request.resource.data.status ==
+                  resource.data.status
+              )
+            )
+          )
+
+          ||
+
+          /* ===========================================
+             TEACHER
+             =========================================== */
+
+          (
+            isTeacher()
+
+            &&
+
+            resource.data.teacherId ==
+              request.auth.uid
+
+            &&
+
+            resource.data.status in [
+              "draft",
+              "rejected"
+            ]
+
+            &&
+
+            request.resource.data.status ==
+              resource.data.status
+
+            &&
+
+            /*
+             * Teacher cannot change ownership.
+             */
+
+            request.resource.data.teacherId ==
+              resource.data.teacherId
+
+            &&
+
+            request.resource.data.studentId ==
+              resource.data.studentId
+
+            &&
+
+            request.resource.data.createdBy ==
+              resource.data.createdBy
+          )
+        );
+
+
+      /* -----------------------------------------------
+         DELETE
+      ------------------------------------------------ */
+
+      /*
+       * Results should normally never be deleted
+       * from the client.
+       *
+       * Use an Admin-only backend process if
+       * permanent deletion is ever required.
+       */
+
+      allow delete: if false;
+    }
+
+
+    /* =====================================================
+       RESULT AUDIT
+    ===================================================== */
+
+    match /resultAudit/{auditId} {
+
+      /*
+       * Audit records are immutable.
+       */
+
+      allow read: if
+        isAdmin();
+
+
+      /*
+       * IMPORTANT:
+       *
+       * Client-side audit creation is intentionally
+       * disabled here.
+       *
+       * Audit records should ideally be written by
+       * trusted backend/Admin SDK code.
+       */
+
+      allow create: if false;
+
+      allow update: if false;
+
+      allow delete: if false;
+    }
+
+
+    /* =====================================================
+       DEFAULT DENY
+    ===================================================== */
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

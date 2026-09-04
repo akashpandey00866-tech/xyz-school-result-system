@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../config/firebase";
+import { ThemeSwitcher, useTheme } from "../context/ThemeContext";
 
 /*
   XYZ PUBLIC SCHOOL — PUBLIC FRONTEND / LANDING PAGE
@@ -195,6 +196,8 @@ function facilityIcon(name) {
 ========================================================== */
 
 export default function SchoolHome() {
+  const { isDark } = useTheme();
+
   const [
     school,
     setSchool,
@@ -523,6 +526,8 @@ export default function SchoolHome() {
           </nav>
 
           <div className="nav-actions">
+
+            <ThemeSwitcher compact />
 
             <Link
               to="/login"
@@ -1628,8 +1633,8 @@ const styles = `
       BlinkMacSystemFont,
       "Segoe UI",
       sans-serif;
-    color: #0f172a;
-    background: #f8fafc;
+    color: var(--school-text);
+    background: var(--school-bg);
   }
 
   a {
@@ -1638,14 +1643,14 @@ const styles = `
 
   .school-home {
     min-height: 100vh;
-    background: #f8fafc;
+    background: var(--school-bg);
   }
 
   .top-nav {
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgba(255,255,255,.92);
+    background: color-mix(in srgb, var(--school-card) 92%, transparent);
     border-bottom: 1px solid rgba(226,232,240,.85);
     backdrop-filter: blur(18px);
   }
@@ -1664,7 +1669,7 @@ const styles = `
     display: flex;
     align-items: center;
     gap: 11px;
-    color: #0f172a;
+    color: var(--school-text);
     min-width: 230px;
   }
 
@@ -1680,8 +1685,8 @@ const styles = `
     background:
       linear-gradient(
         135deg,
-        #059669,
-        #064e3b
+        var(--school-primary),
+        var(--school-primary-dark)
       );
     font-weight: 950;
   }
@@ -1703,7 +1708,7 @@ const styles = `
   .brand small {
     display: block;
     margin-top: 2px;
-    color: #059669;
+    color: var(--school-primary);
     font-size: 7px;
     font-weight: 950;
     letter-spacing: .2em;
@@ -1716,13 +1721,13 @@ const styles = `
   }
 
   .nav-links a {
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 11px;
     font-weight: 800;
   }
 
   .nav-links a:hover {
-    color: #059669;
+    color: var(--school-primary);
   }
 
   .nav-actions {
@@ -1740,9 +1745,9 @@ const styles = `
   }
 
   .nav-login {
-    color: #334155;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    color: var(--school-text);
+    background: var(--school-bg);
+    border: 1px solid var(--school-border);
   }
 
   .nav-admission {
@@ -1750,8 +1755,8 @@ const styles = `
     background:
       linear-gradient(
         135deg,
-        #059669,
-        #064e3b
+        var(--school-primary),
+        var(--school-primary-dark)
       );
   }
 
@@ -1804,7 +1809,7 @@ const styles = `
   .eyebrow,
   .section-label {
     display: inline-block;
-    color: #34d399;
+    color: var(--school-accent);
     font-size: 9px;
     font-weight: 950;
     letter-spacing: .2em;
@@ -1820,7 +1825,7 @@ const styles = `
   }
 
   .hero h1 span {
-    color: #34d399;
+    color: var(--school-accent);
   }
 
   .hero-copy > p {
@@ -1858,8 +1863,8 @@ const styles = `
     background:
       linear-gradient(
         135deg,
-        #059669,
-        #064e3b
+        var(--school-primary),
+        var(--school-primary-dark)
       );
     box-shadow:
       0 15px 35px rgba(5,150,105,.25);
@@ -1948,17 +1953,17 @@ const styles = `
       repeat(4, 1fr);
     overflow: hidden;
     border-radius: 18px;
-    background: white;
+    background: var(--school-card);
     box-shadow:
       0 25px 60px rgba(15,23,42,.12);
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--school-border);
   }
 
   .quick-card {
     display: flex;
     gap: 10px;
     padding: 19px;
-    border-right: 1px solid #e2e8f0;
+    border-right: 1px solid var(--school-border);
   }
 
   .quick-card:last-child {
@@ -1973,7 +1978,7 @@ const styles = `
     align-items: center;
     justify-content: center;
     border-radius: 10px;
-    background: #ecfdf5;
+    background: var(--school-soft);
     font-size: 15px;
   }
 
@@ -1989,7 +1994,7 @@ const styles = `
   .quick-card strong {
     display: block;
     margin-top: 4px;
-    color: #0f172a;
+    color: var(--school-text);
     font-size: 10px;
     line-height: 1.5;
   }
@@ -2003,7 +2008,7 @@ const styles = `
   }
 
   .section-light {
-    background: #f8fafc;
+    background: var(--school-bg);
   }
 
   .two-col,
@@ -2024,7 +2029,7 @@ const styles = `
   .section h2 {
     max-width: 700px;
     margin: 12px 0 14px;
-    color: #0f172a;
+    color: var(--school-text);
     font-size: clamp(31px, 4vw, 52px);
     line-height: 1.02;
     font-weight: 950;
@@ -2032,7 +2037,7 @@ const styles = `
   }
 
   .lead {
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 13px;
     line-height: 1.8;
   }
@@ -2049,11 +2054,11 @@ const styles = `
     gap: 11px;
     align-items: start;
     padding: 13px 0;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--school-border);
   }
 
   .about-points b {
-    color: #059669;
+    color: var(--school-primary);
     font-size: 10px;
     font-weight: 950;
   }
@@ -2061,12 +2066,12 @@ const styles = `
   .about-points strong {
     display: block;
     margin-bottom: 3px;
-    color: #0f172a;
+    color: var(--school-text);
     font-size: 11px;
   }
 
   .about-points span {
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 10px;
     line-height: 1.55;
   }
@@ -2091,14 +2096,14 @@ const styles = `
     width: 155px;
     padding: 16px;
     border-radius: 17px;
-    background: white;
+    background: var(--school-card);
     box-shadow:
       0 20px 50px rgba(15,23,42,.16);
   }
 
   .about-badge strong {
     display: block;
-    color: #059669;
+    color: var(--school-primary);
     font-size: 28px;
     font-weight: 950;
   }
@@ -2106,7 +2111,7 @@ const styles = `
   .about-badge span {
     display: block;
     margin-top: 2px;
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 9px;
     line-height: 1.5;
   }
@@ -2117,7 +2122,7 @@ const styles = `
       linear-gradient(
         135deg,
         #022c22,
-        #064e3b
+        var(--school-primary-dark)
       );
     color: white;
   }
@@ -2140,7 +2145,7 @@ const styles = `
   }
 
   .mission-grid span {
-    color: #6ee7b7;
+    color: var(--school-primary-light);
     font-size: 8px;
     font-weight: 950;
     letter-spacing: .2em;
@@ -2163,7 +2168,7 @@ const styles = `
   }
 
   .section-heading > p {
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 11px;
     line-height: 1.7;
   }
@@ -2180,8 +2185,8 @@ const styles = `
   .facility-card {
     overflow: hidden;
     border-radius: 19px;
-    border: 1px solid #e2e8f0;
-    background: white;
+    border: 1px solid var(--school-border);
+    background: var(--school-card);
     box-shadow:
       0 12px 30px rgba(15,23,42,.04);
   }
@@ -2225,14 +2230,14 @@ const styles = `
 
   .facility-content h3 {
     margin: 0;
-    color: #0f172a;
+    color: var(--school-text);
     font-size: 13px;
     font-weight: 950;
   }
 
   .facility-content p {
     margin: 7px 0 0;
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 9.5px;
     line-height: 1.65;
   }
@@ -2252,8 +2257,8 @@ const styles = `
     gap: 12px;
     padding: 14px;
     border-radius: 17px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--school-bg);
+    border: 1px solid var(--school-border);
   }
 
   .faculty-photo {
@@ -2269,8 +2274,8 @@ const styles = `
     background:
       linear-gradient(
         135deg,
-        #059669,
-        #064e3b
+        var(--school-primary),
+        var(--school-primary-dark)
       );
     font-size: 14px;
     font-weight: 950;
@@ -2284,21 +2289,21 @@ const styles = `
 
   .faculty-card h3 {
     margin: 0;
-    color: #0f172a;
+    color: var(--school-text);
     font-size: 11px;
     font-weight: 950;
   }
 
   .faculty-role {
     margin: 4px 0 0;
-    color: #059669;
+    color: var(--school-primary);
     font-size: 8px;
     font-weight: 900;
   }
 
   .faculty-qualification {
     margin: 3px 0 0;
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 8.5px;
     line-height: 1.45;
   }
@@ -2308,8 +2313,8 @@ const styles = `
     margin-top: 5px;
     padding: 3px 6px;
     border-radius: 99px;
-    background: #ecfdf5;
-    color: #047857;
+    background: var(--school-soft);
+    color: var(--school-primary-dark);
     font-size: 7px;
     font-weight: 900;
   }
@@ -2322,8 +2327,8 @@ const styles = `
     border-radius: 19px;
     border: 1px dashed #cbd5e1;
     text-align: center;
-    color: #64748b;
-    background: #f8fafc;
+    color: var(--school-muted);
+    background: var(--school-bg);
     font-size: 11px;
   }
 
@@ -2335,7 +2340,7 @@ const styles = `
 
   .empty-faculty h3 {
     margin: 0;
-    color: #0f172a;
+    color: var(--school-text);
     font-size: 15px;
   }
 
@@ -2354,8 +2359,8 @@ const styles = `
     border: none;
     border-radius: 11px;
     padding: 11px 15px;
-    background: #ecfdf5;
-    color: #047857;
+    background: var(--school-soft);
+    color: var(--school-primary-dark);
     font-size: 10px;
     font-weight: 900;
     cursor: pointer;
@@ -2384,7 +2389,7 @@ const styles = `
   }
 
   .section-label.light {
-    color: #6ee7b7;
+    color: var(--school-primary-light);
   }
 
   .admission-copy h2 {
@@ -2423,7 +2428,7 @@ const styles = `
   }
 
   .admission-steps b {
-    color: #6ee7b7;
+    color: var(--school-primary-light);
     font-size: 8px;
   }
 
@@ -2441,7 +2446,7 @@ const styles = `
   }
 
   .white-btn {
-    color: #064e3b;
+    color: var(--school-primary-dark);
     background: white;
   }
 
@@ -2498,8 +2503,8 @@ const styles = `
     align-items: center;
     padding: 38px;
     border-radius: 24px;
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: var(--school-card);
+    border: 1px solid var(--school-border);
     box-shadow:
       0 15px 45px rgba(15,23,42,.05);
   }
@@ -2512,7 +2517,7 @@ const styles = `
   .verify-box p {
     max-width: 560px;
     margin: 0;
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 11px;
     line-height: 1.7;
   }
@@ -2524,9 +2529,9 @@ const styles = `
   }
 
   .secondary-outline {
-    color: #334155;
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
+    color: var(--school-text);
+    border: 1px solid var(--school-border);
+    background: var(--school-bg);
   }
 
   .contact-grid {
@@ -2557,7 +2562,7 @@ const styles = `
     align-items: center;
     justify-content: center;
     border-radius: 10px;
-    background: #ecfdf5;
+    background: var(--school-soft);
   }
 
   .contact-list small {
@@ -2571,7 +2576,7 @@ const styles = `
   .contact-list strong {
     display: block;
     margin-top: 4px;
-    color: #0f172a;
+    color: var(--school-text);
     font-size: 10px;
     line-height: 1.5;
   }
@@ -2582,16 +2587,16 @@ const styles = `
     background:
       linear-gradient(
         135deg,
-        #f8fafc,
+        var(--school-bg),
         #f0fdf4
       );
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--school-border);
   }
 
   .contact-card > span {
     display: block;
     margin-bottom: 11px;
-    color: #059669;
+    color: var(--school-primary);
     font-size: 8px;
     font-weight: 950;
     letter-spacing: .18em;
@@ -2600,8 +2605,8 @@ const styles = `
   .contact-card a {
     display: block;
     padding: 11px 0;
-    border-top: 1px solid #e2e8f0;
-    color: #334155;
+    border-top: 1px solid var(--school-border);
+    color: var(--school-text);
     font-size: 10px;
     font-weight: 850;
   }
@@ -2638,8 +2643,8 @@ const styles = `
     background:
       linear-gradient(
         135deg,
-        #059669,
-        #064e3b
+        var(--school-primary),
+        var(--school-primary-dark)
       );
     font-size: 10px;
     font-weight: 950;
@@ -2654,7 +2659,7 @@ const styles = `
   .footer-brand span {
     display: block;
     margin-top: 2px;
-    color: #34d399;
+    color: var(--school-accent);
     font-size: 7px;
     font-weight: 900;
     letter-spacing: .13em;
@@ -2663,7 +2668,7 @@ const styles = `
   .footer-grid > div > p {
     max-width: 330px;
     margin-top: 15px;
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 9px;
     line-height: 1.65;
   }
@@ -2696,7 +2701,7 @@ const styles = `
     justify-content: space-between;
     gap: 15px;
     border-top: 1px solid rgba(255,255,255,.08);
-    color: #64748b;
+    color: var(--school-muted);
     font-size: 8px;
   }
 
@@ -2774,7 +2779,7 @@ const styles = `
 
     .quick-card {
       border-right: 0;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--school-border);
     }
 
     .quick-card:last-child {
@@ -2801,6 +2806,20 @@ const styles = `
       flex-direction: column;
       align-items: flex-start;
     }
+  }
+
+
+  [data-mode="dark"] .top-nav {
+    background: rgba(15,23,42,.92);
+  }
+
+  [data-mode="dark"] .brand-logo img {
+    background: #ffffff;
+  }
+
+  [data-mode="dark"] .secondary-outline,
+  [data-mode="dark"] .nav-login {
+    color: var(--school-text);
   }
 `;
 

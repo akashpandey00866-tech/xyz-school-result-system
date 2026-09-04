@@ -1,22 +1,99 @@
-import jsPDF from "jspdf";
 import QRCode from "qrcode";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   addDoc,
   collection,
   doc,
   onSnapshot,
-  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
 
+import { useNavigate } from "react-router-dom";
+
 import AdminLayout from "../layouts/AdminLayout";
 import { db } from "../config/firebase";
 
 function FeeManagement() {
+  const getStudentFeeSnapshot = useCallback(
+    (student) => {
+      const annualFee = Number(
+        feeStructures?.[`class-${student?.className}`]?.total ??
+        feeSettings?.[`class${student?.className}`] ??
+        student?.annualFee ??
+        0
+      );
+
+      const transportCharge = Number(
+        student?.transportFee ??
+        student?.transportCharge ??
+        student?.transportationFee ??
+        student?.transportAmount ??
+        0
+      );
+
+      const academicPaid = Number(
+        student?.paidFee || 0
+      );
+
+      const transportPaid = Number(
+        student?.transportPaid || 0
+      );
+
+      const academicDue = Math.max(
+        0,
+        annualFee - academicPaid
+      );
+
+      const transportDue = Math.max(
+        0,
+        transportCharge - transportPaid
+      );
+
+      const totalPaid =
+        academicPaid + transportPaid;
+
+      const totalDue =
+        academicDue + transportDue;
+
+      return {
+        annualFee,
+        transportCharge,
+        academicPaid,
+        academicDue,
+        transportPaid,
+        transportDue,
+        totalPaid,
+        totalDue,
+      };
+    },
+    [feeStructures, feeSettings]
+  );
+
+  const getPaymentHistory = useCallback(
+    (student) => {
+      if (
+        !Array.isArray(student?.paymentHistory)
+      ) {
+        return [];
+      }
+
+      return student.paymentHistory
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(b?.timestamp || 0) -
+            Number(a?.timestamp || 0)
+        );
+    },
+    []
+  );
+
+
+
+  const navigate = useNavigate();
 
   /* ===============================
             STATES
@@ -51,97 +128,6 @@ function FeeManagement() {
   const [classFilter, setClassFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [showStructure, setShowStructure] = useState(true);
-
-  /* =========================================================
-     SINGLE SOURCE OF TRUTH FOR ALL FEE CALCULATIONS
-  ========================================================= */
-
-  const getStudentFeeSnapshot = (student) => {
-    const structure =
-      feeStructures?.[`class-${student?.className}`];
-
-    const structureAcademic =
-      Number(structure?.tuitionFee || 0) +
-      Number(structure?.examFee || 0) +
-      Number(structure?.otherFee || 0);
-
-    const structureTransport =
-      Number(structure?.transportFee || 0);
-
-    const legacyTotal = Number(
-      feeSettings?.[`class${student?.className}`] || 0
-    );
-
-    const annualFee = structure
-      ? structureAcademic
-      : Number(student?.annualFee ?? legacyTotal ?? 0);
-
-    const hasExplicitTransportAssignment =
-      student?.transportEnabled === false ||
-      student?.transportOpted === false ||
-      student?.usesTransport === false;
-
-    const studentTransportValue =
-      student?.transportFee ??
-      student?.transportCharge ??
-      student?.transportationFee ??
-      student?.transportAmount;
-
-    // Fee Settings is the source of truth for class transportation charges.
-    // Legacy student values such as 0 must not hide a configured class charge.
-    const transportCharge = hasExplicitTransportAssignment
-      ? 0
-      : structure
-        ? structureTransport
-        : Number(studentTransportValue || 0);
-
-    const academicPaid = Math.max(
-      0,
-      Number(student?.paidFee || 0)
-    );
-
-    const transportPaid = Math.max(
-      0,
-      Number(student?.transportPaid || 0)
-    );
-
-    const academicDue = Math.max(
-      0,
-      annualFee - academicPaid
-    );
-
-    const transportDue = Math.max(
-      0,
-      transportCharge - transportPaid
-    );
-
-    return {
-      annualFee,
-      transportCharge,
-      academicPaid,
-      academicDue,
-      transportPaid,
-      transportDue,
-      totalPaid:
-        academicPaid + transportPaid,
-      totalDue:
-        academicDue + transportDue,
-      grandTotal:
-        annualFee + transportCharge,
-    };
-  };
-
-  const getPaymentHistory = (student) =>
-    Array.isArray(student?.paymentHistory)
-      ? student.paymentHistory
-          .slice()
-          .sort(
-            (a, b) =>
-              Number(b?.timestamp || 0) -
-              Number(a?.timestamp || 0)
-          )
-      : [];
-
   const [showReports, setShowReports] = useState(false);
 
   /* ===============================
@@ -267,10 +253,25 @@ function FeeManagement() {
         return false;
       }
 
-      const fee = getStudentFeeSnapshot(student);
+      const annualFee = Number(
+        feeStructures[
+          `class-${student.className}`
+        ]?.total ??
+        feeSettings[
+          `class${student.className}`
+        ] ??
+        student.annualFee ??
+        0
+      );
 
-      const paidFee = fee.totalPaid;
-      const dueFee = fee.totalDue;
+      const paidFee = Number(
+        student.paidFee || 0
+      );
+
+      const dueFee = Math.max(
+        0,
+        annualFee - paidFee
+      );
 
       const status =
         dueFee <= 0
@@ -305,43 +306,52 @@ function FeeManagement() {
 
   const totalStudents = students.length;
 
-  const schoolFeeStats = useMemo(() => {
-    return students.reduce(
-      (acc, student) => {
-        const fee =
-          getStudentFeeSnapshot(student);
+  const totalSchoolFee = students.reduce(
 
-        acc.academic += fee.annualFee;
-        acc.transport += fee.transportCharge;
-        acc.paid += fee.totalPaid;
-        acc.due += fee.totalDue;
+    (sum, student) => {
 
-        return acc;
-      },
-      {
-        academic: 0,
-        transport: 0,
-        paid: 0,
-        due: 0,
-      }
-    );
-  }, [
-    students,
-    feeStructures,
-    feeSettings,
-  ]);
+      const annualFee = Number(
 
-  
+        feeStructures[
+          `class-${student.className}`
+        ]?.total ??
+        feeSettings[
+          `class${student.className}`
+        ] ??
+        student.annualFee ??
+        0
 
-  const totalSchoolFee =
-    schoolFeeStats.academic +
-    schoolFeeStats.transport;
+      );
 
-  const totalCollected =
-    schoolFeeStats.paid;
+      return sum + annualFee;
+
+    },
+
+    0
+
+  );
+
+  const totalCollected = students.reduce(
+
+    (sum, student) => {
+
+      return (
+
+        sum +
+
+        Number(student.paidFee || 0)
+
+      );
+
+    },
+
+    0
+
+  );
 
   const totalPending =
-    schoolFeeStats.due;
+
+    totalSchoolFee - totalCollected;
 
 
   /* =========================================================
@@ -423,47 +433,36 @@ function FeeManagement() {
     setPaymentAmount("");
     setPaymentMethod("Cash");
     setPaymentRemarks("");
-    // Always open on Academic. A previous Transport selection must
-    // never make a student with academic dues look fully paid.
-    setTransportCollection(false);
   };
 
   const collectPayment = async () => {
-    if (!paymentStudent || savingPayment) {
-      return;
-    }
+    if (!paymentStudent || savingPayment) return;
 
-    const selectedType =
-      transportCollection
-        ? "TRANSPORTATION"
-        : "ACADEMIC";
+    const snapshot =
+      getStudentFeeSnapshot(paymentStudent);
 
-    const amount =
-      Number(paymentAmount);
+    const amount = Number(paymentAmount);
 
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       window.alert(
         "Valid payment amount enter karein."
       );
       return;
     }
 
-    const preview =
-      getStudentFeeSnapshot(
-        paymentStudent
-      );
+    const collectionType =
+      transportCollection
+        ? "TRANSPORTATION"
+        : "ACADEMIC";
 
     const selectedDue =
-      selectedType === "TRANSPORTATION"
-        ? preview.transportDue
-        : preview.academicDue;
+      collectionType === "TRANSPORTATION"
+        ? snapshot.transportDue
+        : snapshot.academicDue;
 
     if (selectedDue <= 0) {
       window.alert(
-        selectedType === "TRANSPORTATION"
+        collectionType === "TRANSPORTATION"
           ? "Transportation fee fully paid hai."
           : "Academic fee fully paid hai."
       );
@@ -482,268 +481,187 @@ function FeeManagement() {
     setSavingPayment(true);
 
     try {
-      const now =
-        new Date();
+      const now = new Date();
 
       const receiptNo =
         `XYZ-${now.getFullYear()}-` +
         `${String(
-          paymentStudent.enrollmentNo ||
-            "NA"
-        ).replace(
-          /[^a-zA-Z0-9]/g,
-          ""
-        )}-` +
-        `${Date.now()
-          .toString(36)
-          .toUpperCase()}`;
+          paymentStudent.enrollmentNo || "NA"
+        ).replace(/[^a-zA-Z0-9]/g, "")}-` +
+        `${Date.now().toString(36).toUpperCase()}`;
 
-      const basePayment = {
+      const payment = {
         amount,
-        feeType: selectedType,
-        date:
-          now.toLocaleDateString(
-            "en-GB"
-          ),
-        day:
-          now.toLocaleDateString(
-            "en-IN",
-            { weekday: "long" }
-          ),
-        method:
-          paymentMethod,
+        feeType: collectionType,
+        date: now.toLocaleDateString("en-GB"),
+        day: now.toLocaleDateString("en-IN", {
+          weekday: "long",
+        }),
+        method: paymentMethod,
         receiptNo,
-        receivedBy:
-          "Admin",
-        remarks:
-          paymentRemarks.trim(),
-        status:
-          "SUCCESS",
-        time:
-          now.toLocaleTimeString(
-            "en-IN",
-            {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            }
-          ),
-        timestamp:
-          Date.now(),
+        receivedBy: "Admin",
+        remarks: paymentRemarks.trim(),
+        status: "SUCCESS",
+        time: now.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        timestamp: Date.now(),
+        academicPaidBefore:
+          snapshot.academicPaid,
+        academicDueBefore:
+          snapshot.academicDue,
+        transportPaidBefore:
+          snapshot.transportPaid,
+        transportDueBefore:
+          snapshot.transportDue,
       };
 
-      const studentRef =
+      const history = getPaymentHistory(
+        paymentStudent
+      );
+
+      let academicPaid =
+        snapshot.academicPaid;
+
+      let transportPaid =
+        snapshot.transportPaid;
+
+      if (
+        collectionType === "TRANSPORTATION"
+      ) {
+        transportPaid += amount;
+      } else {
+        academicPaid += amount;
+      }
+
+      const academicDue = Math.max(
+        0,
+        snapshot.annualFee - academicPaid
+      );
+
+      const transportDue = Math.max(
+        0,
+        snapshot.transportCharge -
+          transportPaid
+      );
+
+      const totalPaid =
+        academicPaid + transportPaid;
+
+      const totalDue =
+        academicDue + transportDue;
+
+      const updatedPayment = {
+        ...payment,
+        academicPaidAfter:
+          academicPaid,
+        academicDueAfter:
+          academicDue,
+        transportPaidAfter:
+          transportPaid,
+        transportDueAfter:
+          transportDue,
+        totalPaidAfter:
+          totalPaid,
+        totalDueAfter:
+          totalDue,
+      };
+
+      await updateDoc(
         doc(
           db,
           "students",
           paymentStudent.id
-        );
-
-      let finalState = null;
-      let finalFee = null;
-      let savedPayment = null;
-
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const snap =
-            await transaction.get(
-              studentRef
-            );
-
-          if (!snap.exists()) {
-            throw new Error(
-              "Student record nahi mila."
-            );
-          }
-
-          const current =
-            snap.data();
-
-          const fee =
-            getStudentFeeSnapshot(
-              current
-            );
-
-          const currentDue =
-            selectedType ===
-            "TRANSPORTATION"
-              ? fee.transportDue
-              : fee.academicDue;
-
-          if (amount > currentDue) {
-            throw new Error(
-              `Current due ₹${currentDue.toLocaleString(
-                "en-IN"
-              )} se zyada payment allowed nahi hai.`
-            );
-          }
-
-          const academicPaid =
-            fee.academicPaid +
-            (selectedType ===
-            "ACADEMIC"
-              ? amount
-              : 0);
-
-          const transportPaid =
-            fee.transportPaid +
-            (selectedType ===
-            "TRANSPORTATION"
-              ? amount
-              : 0);
-
-          const academicDue =
-            Math.max(
-              0,
-              fee.annualFee -
-                academicPaid
-            );
-
-          const transportDue =
-            Math.max(
-              0,
-              fee.transportCharge -
-                transportPaid
-            );
-
-          const totalPaid =
-            academicPaid +
-            transportPaid;
-
-          const totalDue =
-            academicDue +
-            transportDue;
-
-          const history =
-            Array.isArray(
-              current.paymentHistory
-            )
-              ? current.paymentHistory
-              : [];
-
-          savedPayment = {
-            ...basePayment,
-            academicPaidBefore:
-              fee.academicPaid,
-            transportPaidBefore:
-              fee.transportPaid,
-            academicPaidAfter:
-              academicPaid,
-            academicDueAfter:
-              academicDue,
-            transportPaidAfter:
-              transportPaid,
-            transportDueAfter:
-              transportDue,
-            totalPaidAfter:
-              totalPaid,
-            totalDueAfter:
-              totalDue,
-          };
-
-          finalState = {
+        ),
+        {
+          annualFee:
+            snapshot.annualFee,
+          paidFee:
             academicPaid,
+          dueFee:
             academicDue,
+          transportFee:
+            snapshot.transportCharge,
+          transportPaid:
             transportPaid,
+          transportDue:
             transportDue,
-            totalPaid,
-            totalDue,
-          };
-
-          finalFee = fee;
-
-          transaction.update(
-            studentRef,
-            {
-              annualFee:
-                fee.annualFee,
-              paidFee:
-                academicPaid,
-              dueFee:
-                academicDue,
-              transportFee:
-                fee.transportCharge,
-              transportPaid:
-                transportPaid,
-              transportDue:
-                transportDue,
-              totalPaid,
-              totalDue,
-              paymentHistory: [
-                ...history,
-                savedPayment,
-              ],
-              lastPayment:
-                basePayment.date,
-              lastPaymentMethod:
-                basePayment.method,
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
+          paymentHistory: [
+            ...history,
+            updatedPayment,
+          ],
+          lastPayment:
+            payment.date,
+          lastPaymentMethod:
+            payment.method,
+          totalPaid,
+          totalDue,
+          updatedAt:
+            serverTimestamp(),
         }
       );
 
       const receipt = {
-        ...savedPayment,
+        ...updatedPayment,
         studentName:
-          paymentStudent.name ||
-          "",
+          paymentStudent.name || "",
         enrollmentNo:
-          paymentStudent.enrollmentNo ||
-          "",
+          paymentStudent.enrollmentNo || "",
         className:
-          paymentStudent.className ||
-          "",
+          paymentStudent.className || "",
         section:
-          paymentStudent.section ||
-          "",
+          paymentStudent.section || "",
         annualFee:
-          finalFee.annualFee,
+          snapshot.annualFee,
         transportCharge:
-          finalFee.transportCharge,
-        previousAcademicPaid:
-          savedPayment.academicPaidBefore,
-        previousTransportPaid:
-          savedPayment.transportPaidBefore,
-        academicPaidAfter:
-          finalState.academicPaid,
-        academicDueAfter:
-          finalState.academicDue,
-        transportPaidAfter:
-          finalState.transportPaid,
-        transportDueAfter:
-          finalState.transportDue,
+          snapshot.transportCharge,
+        previousPaid:
+          collectionType ===
+          "TRANSPORTATION"
+            ? snapshot.transportPaid
+            : snapshot.academicPaid,
+        paidAfter:
+          collectionType ===
+          "TRANSPORTATION"
+            ? transportPaid
+            : academicPaid,
+        dueAfter:
+          collectionType ===
+          "TRANSPORTATION"
+            ? transportDue
+            : academicDue,
         totalPaidAfter:
-          finalState.totalPaid,
+          totalPaid,
         totalDueAfter:
-          finalState.totalDue,
+          totalDue,
       };
 
-      setLastReceipt(
-        receipt
-      );
+      setLastReceipt(receipt);
 
-      setPaymentStudent(
-        null
-      );
-      setPaymentAmount(
-        ""
-      );
-      setPaymentRemarks(
-        ""
-      );
-      setPaymentMethod(
-        "Cash"
-      );
-      setTransportCollection(
-        false
-      );
+      setPaymentStudent(null);
+      setPaymentAmount("");
+      setPaymentRemarks("");
+      setPaymentMethod("Cash");
+      setTransportCollection(false);
 
-      await downloadReceipt(
-        receipt
-      );
+      try {
+        await generateProfessionalReceipt(
+          receipt
+        );
+      } catch (receiptError) {
+        console.error(
+          "Receipt generation failed after payment save:",
+          receiptError
+        );
+
+        window.alert(
+          `Payment successfully saved.\nReceipt No: ${receiptNo}\nPDF receipt generate nahi ho payi.`
+        );
+
+        return;
+      }
 
       window.alert(
         `Payment successfully collected.\n\nReceipt No: ${receiptNo}`
@@ -759,661 +677,401 @@ function FeeManagement() {
         "Payment save nahi ho paya."
       );
     } finally {
-      setSavingPayment(
-        false
-      );
+      setSavingPayment(false);
     }
   };
 
 
-  const buildProfessionalReceipt = async (
-    receipt
-  ) => {
-    const pdf =
-      new jsPDF({
-        orientation:
-          "portrait",
-        unit: "mm",
-        format: "a4",
-      });
-
+  const generateProfessionalReceipt = async (receipt) => {
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageWidth = 210;
+    const pageHeight = 297;
     const left = 15;
     const right = 195;
+    const center = pageWidth / 2;
 
-    pdf.setFillColor(
-      15,
-      118,
-      110
+    const money = (value) =>
+      `₹ ${Number(value || 0).toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+
+    const text = (value, fallback = "—") =>
+      value === undefined || value === null || String(value).trim() === ""
+        ? fallback
+        : String(value);
+
+    const safeFilePart = (value) =>
+      String(value || "Receipt").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    const schoolName = text(
+      receipt.schoolName || feeSettings?.schoolName || "XYZ PUBLIC SCHOOL"
     );
-    pdf.rect(
+    const schoolAddress = text(
+      receipt.schoolAddress || feeSettings?.schoolAddress || "",
+      ""
+    );
+    const schoolPhone = text(
+      receipt.schoolPhone || feeSettings?.schoolPhone || "",
+      ""
+    );
+    const schoolEmail = text(
+      receipt.schoolEmail || feeSettings?.schoolEmail || "",
+      ""
+    );
+    const session = text(
+      receipt.session || receipt.academicSession || "2026-27"
+    );
+
+    const receiptNo = text(
+      receipt.receiptNo || receipt.receiptNumber,
+      "RECEIPT"
+    );
+    const studentName = text(receipt.studentName || receipt.name, "Student");
+    const enrollmentNo = text(receipt.enrollmentNo || receipt.rollNumber);
+    const classSection = `${text(receipt.className || receipt.class, "—")}${
+      receipt.section ? ` / ${receipt.section}` : ""
+    }`;
+    const paymentDate = text(receipt.date, "—");
+    const paymentTime = text(receipt.time, "—");
+    const paymentMethod = text(receipt.method || receipt.paymentMethod, "Cash");
+    const feeType = text(receipt.feeType, "ACADEMIC");
+
+    const annualFee = Number(receipt.annualFee || 0);
+    const transportCharge = Number(receipt.transportCharge || 0);
+    const currentPayment = Number(receipt.amount || 0);
+    const previousPaid = Number(receipt.previousPaid || 0);
+    const paidAfter = Number(
+      receipt.paidAfter ?? receipt.totalPaidAfter ?? previousPaid + currentPayment
+    );
+    const dueAfter = Math.max(
       0,
-      0,
-      210,
-      37,
-      "F"
+      Number(
+        receipt.dueAfter ??
+          receipt.totalDueAfter ??
+          annualFee + transportCharge - paidAfter
+      )
     );
 
-    pdf.setTextColor(
-      255,
-      255,
-      255
-    );
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-    pdf.setFontSize(
-      20
-    );
-    pdf.text(
-      "XYZ SCHOOL",
-      105,
-      14,
-      { align: "center" }
-    );
+    const totalFee =
+      feeType === "TRANSPORTATION"
+        ? transportCharge
+        : annualFee + transportCharge;
 
-    pdf.setFont(
-      "helvetica",
-      "normal"
-    );
-    pdf.setFontSize(
-      9
-    );
-    pdf.text(
-      "OFFICIAL FEE PAYMENT RECEIPT",
-      105,
-      21,
-      { align: "center" }
-    );
+    const status = dueAfter <= 0 ? "FULLY PAID" : "PAYMENT RECEIVED";
 
-    pdf.setFontSize(
-      8
-    );
-    pdf.text(
-      "Academic Session 2026-27",
-      105,
-      28,
-      { align: "center" }
-    );
+    /* =====================================================
+       PROFESSIONAL A4 RECEIPT FRAME
+       ===================================================== */
+    pdf.setFillColor(248, 250, 252);
+    pdf.rect(0, 0, pageWidth, pageHeight, "F");
 
-    pdf.setTextColor(
-      35,
-      35,
-      35
-    );
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-    pdf.setFontSize(
-      10
-    );
-    pdf.text(
-      `Receipt No: ${receipt.receiptNo}`,
-      left,
-      47
-    );
+    pdf.setDrawColor(15, 118, 110);
+    pdf.setLineWidth(0.8);
+    pdf.roundedRect(7, 7, 196, 283, 4, 4, "S");
 
-    pdf.setFont(
-      "helvetica",
-      "normal"
-    );
-    pdf.text(
-      `Date: ${receipt.date}`,
-      right,
-      47,
-      { align: "right" }
-    );
+    pdf.setDrawColor(203, 213, 225);
+    pdf.setLineWidth(0.25);
+    pdf.roundedRect(10, 10, 190, 277, 3, 3, "S");
 
-    pdf.setDrawColor(
-      210,
-      215,
-      215
-    );
-    pdf.line(
-      left,
-      52,
-      right,
-      52
-    );
+    /* =====================================================
+       HEADER
+       ===================================================== */
+    pdf.setFillColor(6, 78, 59);
+    pdf.roundedRect(10, 10, 190, 40, 3, 3, "F");
 
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-    pdf.setFontSize(
-      11
-    );
-    pdf.setTextColor(
-      15,
-      118,
-      110
-    );
-    pdf.text(
-      "STUDENT DETAILS",
-      left,
-      62
-    );
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(19);
+    pdf.text(schoolName.toUpperCase(), center, 22, { align: "center" });
 
-    pdf.setFont(
-      "helvetica",
-      "normal"
-    );
-    pdf.setFontSize(
-      10
-    );
-    pdf.setTextColor(
-      40,
-      40,
-      40
-    );
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.5);
+    pdf.text("OFFICIAL FEE PAYMENT RECEIPT", center, 29, {
+      align: "center",
+    });
 
-    pdf.text(
-      `Student Name: ${receipt.studentName}`,
-      left,
-      71
-    );
-    pdf.text(
-      `Enrollment No: ${receipt.enrollmentNo}`,
-      left,
-      78
-    );
-    pdf.text(
-      `Class: ${receipt.className || "-"}${
-        receipt.section
-          ? `-${receipt.section}`
-          : ""
-      }`,
-      left,
-      85
-    );
+    pdf.setFontSize(7);
+    pdf.text(`Academic Session: ${session}`, center, 35, {
+      align: "center",
+    });
 
-    pdf.text(
-      `Payment Method: ${receipt.method}`,
-      right,
-      71,
-      { align: "right" }
-    );
-    pdf.text(
-      `Payment Time: ${receipt.time}`,
-      right,
-      78,
-      { align: "right" }
-    );
-    pdf.text(
-      `Fee Type: ${receipt.feeType}`,
-      right,
-      85,
-      { align: "right" }
-    );
+    const contactLine = [schoolAddress, schoolPhone, schoolEmail]
+      .filter(Boolean)
+      .join("  •  ");
+
+    if (contactLine) {
+      pdf.setFontSize(6.5);
+      pdf.text(contactLine.slice(0, 125), center, 42, {
+        align: "center",
+      });
+    }
+
+    /* =====================================================
+       RECEIPT META
+       ===================================================== */
+    pdf.setTextColor(15, 23, 42);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9.5);
+    pdf.text("RECEIPT NO.", left, 61);
+    pdf.text("PAYMENT DATE", right, 61, { align: "right" });
+
+    pdf.setFontSize(11.5);
+    pdf.text(receiptNo, left, 68);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9.5);
+    pdf.text(paymentDate, right, 68, { align: "right" });
+
+    pdf.setDrawColor(226, 232, 240);
+    pdf.line(left, 74, right, 74);
+
+    /* =====================================================
+       STUDENT DETAILS
+       ===================================================== */
+    pdf.setFillColor(240, 253, 250);
+    pdf.roundedRect(left, 81, 180, 47, 3, 3, "F");
+
+    pdf.setTextColor(6, 95, 70);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10);
+    pdf.text("STUDENT DETAILS", left + 6, 90);
+
+    const detailY = 100;
+    const col1 = left + 6;
+    const col2 = 108;
+
+    const drawDetail = (label, value, x, y) => {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(6.5);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(label.toUpperCase(), x, y);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(String(value).slice(0, 42), x, y + 6);
+    };
+
+    drawDetail("Student Name", studentName, col1, detailY);
+    drawDetail("Enrollment No.", enrollmentNo, col2, detailY);
+    drawDetail("Class / Section", classSection, col1, detailY + 17);
+    drawDetail("Payment Method", paymentMethod, col2, detailY + 17);
+
+    /* =====================================================
+       FEE BREAKDOWN
+       ===================================================== */
+    pdf.setTextColor(15, 23, 42);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.text("FEE BREAKDOWN", left, 141);
 
     const rows =
-      receipt.feeType ===
-      "TRANSPORTATION"
+      feeType === "TRANSPORTATION"
         ? [
-            [
-              "Transportation Charge",
-              receipt.transportCharge,
-            ],
-            [
-              "Previous Transport Paid",
-              receipt.previousTransportPaid,
-            ],
-            [
-              "Current Transport Payment",
-              receipt.amount,
-            ],
-            [
-              "Total Transport Paid",
-              receipt.transportPaidAfter,
-            ],
-            [
-              "Transportation Balance Due",
-              receipt.transportDueAfter,
-            ],
+            ["Transportation Charge", transportCharge],
+            ["Previous Transport Paid", previousPaid],
+            ["Current Transport Payment", currentPayment],
+            ["Total Transport Paid", paidAfter],
+            ["Transportation Balance Due", dueAfter],
           ]
         : [
-            [
-              "Academic Annual Fee",
-              receipt.annualFee,
-            ],
-            [
-              "Previous Academic Paid",
-              receipt.previousAcademicPaid,
-            ],
-            [
-              "Current Academic Payment",
-              receipt.amount,
-            ],
-            [
-              "Total Academic Paid",
-              receipt.academicPaidAfter,
-            ],
-            [
-              "Academic Balance Due",
-              receipt.academicDueAfter,
-            ],
-            [
-              "Transportation Charge",
-              receipt.transportCharge,
-            ],
+            ["Annual Academic Fee", annualFee],
+            ...(transportCharge > 0
+              ? [["Transportation Charge", transportCharge]]
+              : []),
+            ["Total Fee", totalFee],
+            ["Previous Paid", previousPaid],
+            ["Current Payment", currentPayment],
+            ["Total Paid After Payment", paidAfter],
+            ["Balance Due After Payment", dueAfter],
           ];
 
-    const boxHeight =
-      rows.length > 5
-        ? 96
-        : 88;
+    const tableTop = 147;
+    const rowH = 8.2;
+    const tableBottom = tableTop + (rows.length + 1) * rowH;
 
-    pdf.setFillColor(
-      240,
-      247,
-      246
-    );
-    pdf.roundedRect(
-      left,
-      95,
-      180,
-      boxHeight,
-      3,
-      3,
-      "F"
-    );
+    pdf.setFillColor(15, 118, 110);
+    pdf.roundedRect(left, tableTop, 180, rowH, 2, 2, "F");
 
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-    pdf.setFontSize(
-      11
-    );
-    pdf.setTextColor(
-      15,
-      118,
-      110
-    );
-    pdf.text(
-      "FEE SUMMARY",
-      left + 6,
-      104
-    );
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7.5);
+    pdf.text("FEE COMPONENT", left + 6, tableTop + 5.3);
+    pdf.text("AMOUNT", right - 6, tableTop + 5.3, { align: "right" });
 
-    let y = 115;
+    rows.forEach(([label, value], index) => {
+      const y = tableTop + rowH * (index + 1);
 
-    rows.forEach(
-      ([label, value], index) => {
-        pdf.setFont(
-          "helvetica",
-          index >=
-            rows.length - 2
-            ? "bold"
-            : "normal"
-        );
-        pdf.setFontSize(
-          10
-        );
-        pdf.setTextColor(
-          45,
-          45,
-          45
-        );
-        pdf.text(
-          label,
-          left + 7,
-          y
-        );
-        pdf.text(
-          `Rs. ${Number(
-            value || 0
-          ).toLocaleString(
-            "en-IN"
-          )}`,
-          right - 7,
-          y,
-          { align: "right" }
-        );
-        y += 9;
+      if (index % 2 === 0) {
+        pdf.setFillColor(248, 250, 252);
+        pdf.rect(left, y, 180, rowH, "F");
       }
-    );
 
-    const statusY =
-      rows.length > 5
-        ? 199
-        : 191;
+      pdf.setDrawColor(226, 232, 240);
+      pdf.line(left, y + rowH, right, y + rowH);
+
+      pdf.setFont("helvetica", index >= rows.length - 2 ? "bold" : "normal");
+      pdf.setFontSize(8);
+      pdf.setTextColor(51, 65, 85);
+      pdf.text(label, left + 6, y + 5.3);
+      pdf.text(money(value), right - 6, y + 5.3, { align: "right" });
+    });
+
+    pdf.setDrawColor(203, 213, 225);
+    pdf.rect(left, tableTop, 180, tableBottom - tableTop, "S");
+
+    /* =====================================================
+       PAYMENT STATUS + AMOUNT HIGHLIGHT
+       ===================================================== */
+    const statusY = tableBottom + 9;
 
     pdf.setFillColor(
-      receipt.totalDueAfter <= 0
-        ? 220
-        : 255,
-      receipt.totalDueAfter <= 0
-        ? 252
-        : 247,
-      receipt.totalDueAfter <= 0
-        ? 231
-        : 237
+      dueAfter <= 0 ? 220 : 239,
+      dueAfter <= 0 ? 252 : 246,
+      dueAfter <= 0 ? 231 : 255
     );
+    pdf.roundedRect(left, statusY, 180, 25, 3, 3, "F");
 
-    pdf.roundedRect(
-      left,
-      statusY,
-      180,
-      16,
-      3,
-      3,
-      "F"
-    );
+    pdf.setTextColor(15, 23, 42);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.text("CURRENT PAYMENT", left + 7, statusY + 8);
 
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-    pdf.setFontSize(
-      10
-    );
-    pdf.setTextColor(
-      receipt.totalDueAfter <= 0
-        ? 22
-        : 180,
-      receipt.totalDueAfter <= 0
-        ? 101
-        : 83,
-      receipt.totalDueAfter <= 0
-        ? 52
-        : 9
-    );
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(15);
+    pdf.setTextColor(6, 95, 70);
+    pdf.text(money(currentPayment), left + 7, statusY + 18);
 
-    pdf.text(
-      receipt.totalDueAfter <= 0
-        ? "STATUS: FULLY PAID"
-        : "STATUS: PAYMENT RECEIVED",
-      105,
-      statusY + 10,
-      { align: "center" }
-    );
+    pdf.setFontSize(8);
+    pdf.setTextColor(22, 101, 52);
+    pdf.text(`STATUS: ${status}`, right - 7, statusY + 11, {
+      align: "right",
+    });
 
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-    pdf.setFontSize(
-      9
-    );
-    pdf.setTextColor(
-      70,
-      70,
-      70
-    );
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.setTextColor(71, 85, 105);
+    pdf.text(`Time: ${paymentTime}`, right - 7, statusY + 18, {
+      align: "right",
+    });
 
-    pdf.text(
-      `Total Paid: Rs. ${Number(
-        receipt.totalPaidAfter || 0
-      ).toLocaleString(
-        "en-IN"
-      )}`,
-      left,
-      statusY + 27
-    );
-
-    pdf.text(
-      `Total Outstanding: Rs. ${Number(
-        receipt.totalDueAfter || 0
-      ).toLocaleString(
-        "en-IN"
-      )}`,
-      right,
-      statusY + 27,
-      { align: "right" }
-    );
-
-    let qrY =
-      statusY + 38;
-
+    /* =====================================================
+       REMARKS
+       ===================================================== */
+    let footerBaseY = statusY + 34;
     if (receipt.remarks) {
-      pdf.setFont(
-        "helvetica",
-        "bold"
-      );
-      pdf.setFontSize(
-        9
-      );
-      pdf.text(
-        "Remarks:",
-        left,
-        qrY
-      );
-
-      pdf.setFont(
-        "helvetica",
-        "normal"
-      );
-
-      pdf.text(
-        pdf.splitTextToSize(
-          receipt.remarks,
-          125
-        ),
-        left + 18,
-        qrY
-      );
-
-      qrY += 15;
+      pdf.setFillColor(248, 250, 252);
+      pdf.roundedRect(left, footerBaseY, 180, 18, 2, 2, "F");
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7);
+      pdf.setTextColor(71, 85, 105);
+      pdf.text("REMARKS", left + 5, footerBaseY + 6);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(51, 65, 85);
+      const remarkLines = pdf.splitTextToSize(String(receipt.remarks), 155);
+      pdf.text(remarkLines.slice(0, 2), left + 28, footerBaseY + 6);
+      footerBaseY += 25;
     }
 
+    /* =====================================================
+       QR VERIFICATION
+       ===================================================== */
+    const qrY = Math.min(footerBaseY, 226);
     try {
-      const qr =
-        await QRCode.toDataURL(
-          JSON.stringify({
-            receiptNo:
-              receipt.receiptNo,
-            student:
-              receipt.enrollmentNo,
-            amount:
-              receipt.amount,
-            feeType:
-              receipt.feeType,
-            date:
-              receipt.date,
-          }),
-          {
-            width: 180,
-            margin: 1,
-          }
-        );
+      const payload = JSON.stringify({
+        type: "FEE_RECEIPT",
+        receiptNo,
+        enrollmentNo,
+        amount: currentPayment,
+        feeType,
+        date: paymentDate,
+        status,
+      });
 
-      pdf.addImage(
-        qr,
-        "PNG",
-        155,
-        qrY,
-        35,
-        35
-      );
+      const qr = await QRCode.toDataURL(payload, {
+        width: 240,
+        margin: 1,
+        errorCorrectionLevel: "M",
+      });
 
-      pdf.setFontSize(
-        7
-      );
-      pdf.setTextColor(
-        90,
-        90,
-        90
-      );
-      pdf.text(
-        "Receipt Verification",
-        172.5,
-        qrY + 40,
-        { align: "center" }
-      );
-    } catch (error) {
-      console.warn(
-        "QR generation skipped:",
-        error
-      );
+      pdf.addImage(qr, "PNG", 158, qrY, 29, 29);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(6.5);
+      pdf.setTextColor(71, 85, 105);
+      pdf.text("RECEIPT DATA", 172.5, qrY + 33, { align: "center" });
+    } catch (qrError) {
+      console.warn("Receipt QR generation skipped:", qrError);
     }
 
-    const signatureY =
-      Math.min(
-        qrY + 52,
-        267
-      );
+    /* =====================================================
+       AUTHORIZATION
+       ===================================================== */
+    const signatureY = Math.min(qrY + 34, 258);
 
-    pdf.setDrawColor(
-      130,
-      130,
-      130
-    );
-    pdf.line(
-      left,
-      signatureY,
-      left + 55,
-      signatureY
-    );
-    pdf.line(
-      right - 55,
-      signatureY,
-      right,
-      signatureY
-    );
+    pdf.setDrawColor(100, 116, 139);
+    pdf.setLineWidth(0.35);
+    pdf.line(left + 4, signatureY + 13, left + 59, signatureY + 13);
+    pdf.line(right - 59, signatureY + 13, right - 4, signatureY + 13);
 
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-    pdf.setFontSize(
-      8
-    );
-    pdf.setTextColor(
-      55,
-      55,
-      55
-    );
-    pdf.text(
-      "School Office",
-      left + 27.5,
-      signatureY + 6,
-      { align: "center" }
-    );
-    pdf.text(
-      "Authorized Signatory",
-      right - 27.5,
-      signatureY + 6,
-      { align: "center" }
-    );
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(30, 41, 59);
+    pdf.text("School Office", left + 31.5, signatureY + 19, {
+      align: "center",
+    });
+    pdf.text("Authorized Signatory", right - 31.5, signatureY + 19, {
+      align: "center",
+    });
 
-    pdf.setDrawColor(
-      210,
-      215,
-      215
-    );
-    pdf.line(
-      left,
-      284,
-      right,
-      284
-    );
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text("Signature", left + 31.5, signatureY + 24, {
+      align: "center",
+    });
+    pdf.text("Signature / Seal", right - 31.5, signatureY + 24, {
+      align: "center",
+    });
 
-    pdf.setFont(
-      "helvetica",
-      "normal"
-    );
-    pdf.setFontSize(
-      7.5
-    );
-    pdf.setTextColor(
-      90,
-      90,
-      90
-    );
-    pdf.text(
-      "This is a computer-generated official fee receipt.",
-      105,
-      291,
-      { align: "center" }
-    );
-    pdf.text(
-      "Please retain this receipt for your records.",
-      105,
-      295,
-      { align: "center" }
-    );
+    /* =====================================================
+       FOOTER
+       ===================================================== */
+    pdf.setDrawColor(226, 232, 240);
+    pdf.line(left, 279, right, 279);
 
-    return pdf;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text("Computer-generated official fee receipt.", left, 285);
+    pdf.text("Please retain this receipt for your records.", right, 285, {
+      align: "right",
+    });
+
+    pdf.setFontSize(6);
+    pdf.text(`Receipt ID: ${receiptNo}`, center, 289, {
+      align: "center",
+    });
+
+    pdf.save(`Fee_Receipt_${safeFilePart(receiptNo)}.pdf`);
   };
-
-  const downloadReceipt = async (
-    receipt
-  ) => {
-    if (!receipt) return;
-
-    const pdf =
-      await buildProfessionalReceipt(
-        receipt
-      );
-
-    pdf.save(
-      `fee-receipt-${receipt.receiptNo}.pdf`
-    );
-  };
-
-  const printReceipt = async (
-    receipt
-  ) => {
-    if (!receipt) return;
-
-    const pdf =
-      await buildProfessionalReceipt(
-        receipt
-      );
-
-    const url =
-      URL.createObjectURL(
-        pdf.output("blob")
-      );
-
-    const printWindow =
-      window.open(
-        url,
-        "_blank",
-        "width=900,height=1100"
-      );
-
-    if (!printWindow) {
-      URL.revokeObjectURL(
-        url
-      );
-      window.alert(
-        "Print window blocked hai. Browser popup allow karein."
-      );
-      return;
-    }
-
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-
-      setTimeout(
-        () =>
-          URL.revokeObjectURL(
-            url
-          ),
-        3000
-      );
-    };
-  };
-
 
   const exportFeeCSV = () => {
     const rows = filteredStudents.map((student) => {
-      const fee = getStudentFeeSnapshot(student);
-
-      const paid = fee.totalPaid;
-      const due = fee.totalDue;
+      const annualFee = Number(
+        student.annualFee ??
+        feeStructures[`class-${student.className}`]?.total ??
+        feeSettings[`class${student.className}`] ??
+        0
+      );
+      const paid = Number(student.paidFee || 0);
+      const due = Math.max(0, annualFee - paid);
 
       return [
         student.name || "",
         student.enrollmentNo || "",
         student.className || "",
         student.section || "",
-        fee.annualFee,
-        fee.transportCharge,
+        annualFee,
         paid,
         due,
         due === 0 ? "Paid" : paid === 0 ? "Unpaid" : "Partial",
@@ -1426,10 +1084,9 @@ function FeeManagement() {
         "Enrollment",
         "Class",
         "Section",
-        "Academic Fee",
-        "Transport Charge",
-        "Total Paid",
-        "Total Due",
+        "Annual Fee",
+        "Paid",
+        "Due",
         "Status",
       ],
       ...rows,
@@ -1606,6 +1263,64 @@ function FeeManagement() {
   </div>
 
 
+  {/* =========================================================
+      FEE STRUCTURE
+  ========================================================= */}
+
+  <section className="mb-8 bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
+    <div className="p-6 bg-gradient-to-r from-indigo-50 via-white to-emerald-50 border-b border-gray-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest text-indigo-600">
+            Academic Fee Setup
+          </p>
+          <h2 className="text-2xl font-black text-gray-900 mt-1">
+            💰 Class-wise Fee Structure
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Set annual fees once. Student calculations update automatically.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowStructure((value) => !value)}
+          className="px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold hover:border-indigo-300 hover:text-indigo-700"
+        >
+          {showStructure ? "Hide Structure" : "Show Structure"}
+        </button>
+      </div>
+    </div>
+
+    {showStructure && (
+      <div className="p-6">
+        {structureLoading ? (
+          <div className="py-10 text-center text-gray-500">
+            Loading fee structures...
+          </div>
+        ) : structureClasses.length === 0 ? (
+          <div className="py-10 text-center rounded-2xl bg-gray-50 border border-dashed border-gray-200">
+            <p className="font-bold text-gray-600">
+              No classes found from student records.
+            </p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {structureClasses.map(({ className, data }) => (
+              <FeeStructureEditor
+                key={className}
+                className={className}
+                initial={data}
+                saving={savingStructure}
+                onSave={saveFeeStructure}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+  </section>
+
   {/* =========================
          DASHBOARD CARDS
   ========================= */}
@@ -1699,26 +1414,6 @@ function FeeManagement() {
         </span>
       </div>
 
-      {lastReceipt && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => printReceipt(lastReceipt)}
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700"
-          >
-            🖨️ Print Receipt
-          </button>
-
-          <button
-            type="button"
-            onClick={() => downloadReceipt(lastReceipt)}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700"
-          >
-            ⬇️ Download Receipt
-          </button>
-        </div>
-      )}
-
       <div className="flex flex-wrap gap-2">
         <select
           value={classFilter}
@@ -1746,6 +1441,18 @@ function FeeManagement() {
       </div>
 
       <div className="flex flex-wrap gap-2">
+
+        {lastReceipt && (
+          <button
+            type="button"
+            onClick={() =>
+              generateProfessionalReceipt(lastReceipt)
+            }
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700"
+          >
+            🧾 Download Last Receipt
+          </button>
+        )}
 
         <button
           type="button"
@@ -1776,10 +1483,13 @@ function FeeManagement() {
           label="Paid"
           value={
             filteredStudents.filter((student) => {
-              const fee =
-              getStudentFeeSnapshot(student);
-
-              return fee.totalDue <= 0;
+              const annual = Number(
+                student.annualFee ??
+                feeStructures[`class-${student.className}`]?.total ??
+                feeSettings[`class${student.className}`] ??
+                0
+              );
+              return Number(student.paidFee || 0) >= annual;
             }).length
           }
           tone="green"
@@ -1788,13 +1498,14 @@ function FeeManagement() {
           label="Partial"
           value={
             filteredStudents.filter((student) => {
-              const fee =
-                getStudentFeeSnapshot(student);
-
-              return (
-                fee.totalPaid > 0 &&
-                fee.totalDue > 0
+              const annual = Number(
+                student.annualFee ??
+                feeStructures[`class-${student.className}`]?.total ??
+                feeSettings[`class${student.className}`] ??
+                0
               );
+              const paid = Number(student.paidFee || 0);
+              return paid > 0 && paid < annual;
             }).length
           }
           tone="amber"
@@ -1803,9 +1514,7 @@ function FeeManagement() {
           label="Unpaid"
           value={
             filteredStudents.filter(
-              (student) =>
-                getStudentFeeSnapshot(student)
-                  .totalPaid <= 0
+              (student) => Number(student.paidFee || 0) <= 0
             ).length
           }
           tone="red"
@@ -1899,17 +1608,19 @@ function FeeManagement() {
 
   filteredStudents.map((student) => {
 
-    const fee =
-      getStudentFeeSnapshot(student);
-
     const annualFee =
-      fee.annualFee;
+      Number(
+        student.annualFee ??
+        feeStructures[`class-${student.className}`]?.total ??
+        feeSettings[`class${student.className}`] ??
+        0
+      );
 
     const paidFee =
-      fee.totalPaid;
+      Number(student.paidFee || 0);
 
     const dueFee =
-      fee.totalDue;
+      Math.max(0, annualFee - paidFee);
 
     const status =
       dueFee <= 0
@@ -2052,6 +1763,13 @@ function FeeManagement() {
 </button>
 
 
+<button
+  onClick={() => navigate(`/payment-history/${student.id}`)}
+  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+>
+  📜 History
+</button>
+
 </div>
 
 </td>
@@ -2123,25 +1841,6 @@ function FeeManagement() {
                   className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-xl font-bold">×</button>
               </div>
             </div>
-
-            {lastReceipt && lastReceipt.enrollmentNo === historyStudent.enrollmentNo && (
-              <div className="px-5 py-3 bg-white border-b border-slate-200 flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => printReceipt(lastReceipt)}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700"
-                >
-                  🖨️ Print Receipt
-                </button>
-                <button
-                  type="button"
-                  onClick={() => downloadReceipt(lastReceipt)}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-700"
-                >
-                  ⬇️ Download Receipt
-                </button>
-              </div>
-            )}
 
             <div className="p-5 border-b border-slate-100 bg-slate-50">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2242,90 +1941,20 @@ function FeeManagement() {
                             <div className="flex items-center justify-between lg:justify-end gap-5">
                               <p className="text-xl font-black text-slate-900">₹{Number(payment.amount || 0).toLocaleString("en-IN")}</p>
                               <button type="button"
-                                onClick={() => {
-                                  const snapshot =
-                                    getStudentFeeSnapshot(
-                                      historyStudent
-                                    );
-
-                                  const receipt = {
-                                    ...payment,
-                                    studentName:
-                                      historyStudent.name || "",
-                                    enrollmentNo:
-                                      historyStudent.enrollmentNo || "",
-                                    className:
-                                      historyStudent.className || "",
-                                    section:
-                                      historyStudent.section || "",
-                                    annualFee:
-                                      snapshot.annualFee,
-                                    transportCharge:
-                                      snapshot.transportCharge,
-                                    previousAcademicPaid:
-                                      Number(
-                                        payment.academicPaidBefore ??
-                                        Math.max(
-                                          0,
-                                          Number(payment.academicPaidAfter || 0) -
-                                          (payment.feeType === "ACADEMIC"
-                                            ? Number(payment.amount || 0)
-                                            : 0)
-                                        )
-                                      ),
-                                    previousTransportPaid:
-                                      Number(
-                                        payment.transportPaidBefore ??
-                                        Math.max(
-                                          0,
-                                          Number(payment.transportPaidAfter || 0) -
-                                          (payment.feeType === "TRANSPORTATION"
-                                            ? Number(payment.amount || 0)
-                                            : 0)
-                                        )
-                                      ),
-                                    academicPaidAfter:
-                                      Number(
-                                        payment.academicPaidAfter ??
-                                        snapshot.academicPaid
-                                      ),
-                                    academicDueAfter:
-                                      Number(
-                                        payment.academicDueAfter ??
-                                        snapshot.academicDue
-                                      ),
-                                    transportPaidAfter:
-                                      Number(
-                                        payment.transportPaidAfter ??
-                                        snapshot.transportPaid
-                                      ),
-                                    transportDueAfter:
-                                      Number(
-                                        payment.transportDueAfter ??
-                                        snapshot.transportDue
-                                      ),
-                                    totalPaidAfter:
-                                      Number(
-                                        payment.totalPaidAfter ??
-                                        snapshot.totalPaid
-                                      ),
-                                    totalDueAfter:
-                                      Number(
-                                        payment.totalDueAfter ??
-                                        snapshot.totalDue
-                                      ),
-                                  };
-
-                                  setLastReceipt(
-                                    receipt
-                                  );
-
-                                  downloadReceipt(
-                                    receipt
-                                  );
-                                }}
+                                onClick={() => generateProfessionalReceipt({
+                                  ...payment,
+                                  studentName: historyStudent.name,
+                                  enrollmentNo: historyStudent.enrollmentNo,
+                                  className: historyStudent.className,
+                                  section: historyStudent.section,
+                                  annualFee: Number(historyStudent.annualFee || 0),
+                                  transportCharge: Number(historyStudent.transportFee || historyStudent.transportCharge || 0),
+                                  previousPaid: 0,
+                                  paidAfter: Number(payment.amount || 0),
+                                  dueAfter: 0,
+                                })}
                                 className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
-                                🧾 Generate Receipt
+                                🧾 Receipt
                               </button>
                             </div>
                           </div>
@@ -2354,7 +1983,7 @@ function FeeManagement() {
             }
           }}
         >
-          <div className="w-full max-w-3xl max-h-[92vh] flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
 
             <div className="bg-gradient-to-r from-emerald-700 to-teal-700 text-white px-6 py-6">
               <div className="flex items-start justify-between gap-4">
@@ -2386,137 +2015,84 @@ function FeeManagement() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
+            <div className="p-6 space-y-5">
 
               {(() => {
-                const feeSnapshot =
-                  getStudentFeeSnapshot(
-                    paymentStudent
-                  );
+                const annualFee = Number(
+                  feeStructures[
+                    `class-${paymentStudent.className}`
+                  ]?.total ??
+                  feeSettings[
+                    `class${paymentStudent.className}`
+                  ] ??
+                  paymentStudent.annualFee ??
+                  0
+                );
 
-                const annualFee =
-                  feeSnapshot.annualFee;
+                const paid = Number(
+                  paymentStudent.paidFee || 0
+                );
 
-                const paid =
-                  feeSnapshot.academicPaid;
-
-                const transportCharge =
-                  feeSnapshot.transportCharge;
-
-                const transportPaid =
-                  feeSnapshot.transportPaid;
-
-                const academicDue =
-                  feeSnapshot.academicDue;
-
-                const transportDue =
-                  feeSnapshot.transportDue;
-
-                const selectedDue =
-                  transportCollection
-                    ? transportDue
-                    : academicDue;
-
-                const totalOutstanding =
-                  Math.max(0, academicDue) +
-                  Math.max(0, transportDue);
+                const transportCharge = Number(
+                  paymentStudent.transportFee ??
+                  paymentStudent.transportCharge ??
+                  paymentStudent.transportationFee ??
+                  paymentStudent.transportAmount ??
+                  0
+                );
+                const transportPaid = Number(paymentStudent.transportPaid || 0);
+                const academicDue = Math.max(0, annualFee - paid);
+                const transportDue = Math.max(0, transportCharge - transportPaid);
+                const due = transportCollection ? transportDue : academicDue;
 
                 return (
                   <>
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-
-                        <div className="rounded-2xl bg-blue-50 border border-blue-100 p-4">
-                          <p className="text-[11px] font-black text-blue-600 uppercase tracking-wide">
-                            Academic Fee
-                          </p>
-                          <p className="text-xl font-black text-blue-800 mt-1">
-                            ₹{annualFee.toLocaleString("en-IN")}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
-                          <p className="text-[11px] font-black text-emerald-600 uppercase tracking-wide">
-                            Academic Paid
-                          </p>
-                          <p className="text-xl font-black text-emerald-800 mt-1">
-                            ₹{paid.toLocaleString("en-IN")}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-red-50 border border-red-100 p-4">
-                          <p className="text-[11px] font-black text-red-600 uppercase tracking-wide">
-                            Academic Due
-                          </p>
-                          <p className="text-xl font-black text-red-800 mt-1">
-                            ₹{academicDue.toLocaleString("en-IN")}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-purple-50 border border-purple-100 p-4">
-                          <p className="text-[11px] font-black text-purple-600 uppercase tracking-wide">
-                            Transport Charge
-                          </p>
-                          <p className="text-xl font-black text-purple-800 mt-1">
-                            ₹{transportCharge.toLocaleString("en-IN")}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-violet-50 border border-violet-100 p-4">
-                          <p className="text-[11px] font-black text-violet-600 uppercase tracking-wide">
-                            Transport Paid
-                          </p>
-                          <p className="text-xl font-black text-violet-800 mt-1">
-                            ₹{transportPaid.toLocaleString("en-IN")}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-orange-50 border border-orange-100 p-4">
-                          <p className="text-[11px] font-black text-orange-600 uppercase tracking-wide">
-                            Transport Due
-                          </p>
-                          <p className="text-xl font-black text-orange-800 mt-1">
-                            ₹{transportDue.toLocaleString("en-IN")}
-                          </p>
-                        </div>
-
+                      <div className="rounded-2xl bg-blue-50 border border-blue-100 p-4">
+                        <p className="text-xs font-bold text-blue-600 uppercase">
+                          Annual Fee
+                        </p>
+                        <p className="text-xl font-black text-blue-800 mt-1">
+                          ₹{annualFee.toLocaleString("en-IN")}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-purple-50 border border-purple-100 p-4">
+                        <p className="text-xs font-bold text-purple-600 uppercase">
+                          Transport Charge
+                        </p>
+                        <p className="text-xl font-black text-purple-800 mt-1">
+                          ₹{transportCharge.toLocaleString("en-IN")}
+                        </p>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="rounded-2xl bg-slate-100 border border-slate-200 p-4">
-                          <p className="text-[11px] font-black text-slate-600 uppercase tracking-wide">
-                            Total Paid
-                          </p>
-                          <p className="text-2xl font-black text-slate-900 mt-1">
-                            ₹{feeSnapshot.totalPaid.toLocaleString("en-IN")}
-                          </p>
-                        </div>
+                      <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+                        <p className="text-xs font-bold text-emerald-600 uppercase">
+                          Paid
+                        </p>
+                        <p className="text-xl font-black text-emerald-800 mt-1">
+                          ₹{paid.toLocaleString("en-IN")}
+                        </p>
+                      </div>
 
-                        <div className="rounded-2xl bg-red-100 border border-red-200 p-4">
-                          <p className="text-[11px] font-black text-red-700 uppercase tracking-wide">
-                            Total Outstanding Due
-                          </p>
-                          <p className="text-2xl font-black text-red-900 mt-1">
-                            ₹{feeSnapshot.totalDue.toLocaleString("en-IN")}
-                          </p>
-                          <p className="text-[11px] text-red-700 mt-1">
-                            Academic ₹{academicDue.toLocaleString("en-IN")}
-                            {" · "}
-                            Transport ₹{transportDue.toLocaleString("en-IN")}
-                          </p>
-                        </div>
+                      <div className="rounded-2xl bg-red-50 border border-red-100 p-4">
+                        <p className="text-xs font-bold text-red-600 uppercase">
+                          Due
+                        </p>
+                        <p className="text-xl font-black text-red-800 mt-1">
+                          ₹{due.toLocaleString("en-IN")}
+                        </p>
                       </div>
 
                     </div>
 
-                    {feeSnapshot.totalDue <= 0 ? (
+                    {due <= 0 ? (
                       <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-5 text-center">
                         <p className="font-black text-emerald-700">
                           ✅ Fee Fully Paid
                         </p>
                         <p className="text-sm text-emerald-600 mt-1">
-                          Is student ke liye academic aur transportation dono outstanding fees ₹0 hain.
+                          Is student ke liye koi outstanding fee nahi hai.
                         </p>
                       </div>
                     ) : (
@@ -2533,9 +2109,8 @@ function FeeManagement() {
         🎓 Academic
       </button>
       <button type="button" onClick={() => setTransportCollection(true)}
-        disabled={transportDue <= 0}
-        className={`px-4 py-2 rounded-xl text-xs font-black ${transportCollection ? "bg-purple-600 text-white" : "bg-white border border-slate-200 text-slate-600"} ${transportDue <= 0 ? "opacity-50 cursor-not-allowed" : ""}`}>
-        🚌 Transportation {transportDue <= 0 ? "(Paid)" : ""}
+        className={`px-4 py-2 rounded-xl text-xs font-black ${transportCollection ? "bg-purple-600 text-white" : "bg-white border border-slate-200 text-slate-600"}`}>
+        🚌 Transportation
       </button>
     </div>
   </div>
@@ -2554,7 +2129,7 @@ function FeeManagement() {
                             <input
                               type="number"
                               min="1"
-                              max={selectedDue}
+                              max={due}
                               step="1"
                               value={paymentAmount}
                               onChange={(event) =>
@@ -2562,7 +2137,7 @@ function FeeManagement() {
                                   event.target.value
                                 )
                               }
-                              placeholder={`Maximum ₹${selectedDue.toLocaleString("en-IN")}`}
+                              placeholder={`Maximum ₹${due.toLocaleString("en-IN")}`}
                               className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-4 text-lg font-bold outline-none focus:bg-white focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50"
                               autoFocus
                             />
@@ -2572,7 +2147,7 @@ function FeeManagement() {
                             Maximum collectible:
                             {" "}
                             <b className="text-red-600">
-                              ₹{selectedDue.toLocaleString("en-IN")}
+                              ₹{due.toLocaleString("en-IN")}
                             </b>
                           </p>
                         </div>
@@ -2627,36 +2202,34 @@ function FeeManagement() {
                           />
                         </div>
 
-                        <div className="sticky bottom-0 -mx-6 px-6 pt-4 pb-1 bg-white/95 backdrop-blur border-t border-slate-200">
-                          <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setPaymentStudent(null)
-                              }
-                              className="sm:w-1/3 rounded-2xl border border-slate-200 bg-white text-slate-700 py-3.5 font-black hover:bg-slate-50"
-                            >
-                              Cancel
-                            </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPaymentStudent(null)
+                            }
+                            className="flex-1 rounded-2xl border border-slate-200 bg-white text-slate-700 py-3.5 font-black hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
 
-                            <button
-                              type="button"
-                              disabled={
-                                savingPayment ||
-                                !paymentAmount ||
-                                Number(paymentAmount) <= 0 ||
-                                Number(paymentAmount) > selectedDue
-                              }
-                              onClick={collectPayment}
-                              className="flex-1 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 font-black shadow-lg shadow-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                            >
-                              {savingPayment
-                                ? "Saving Payment..."
-                                : "💰 Collect & Generate Receipt"}
-                            </button>
+                          <button
+                            type="button"
+                            disabled={
+                              savingPayment ||
+                              !paymentAmount ||
+                              Number(paymentAmount) <= 0 ||
+                              Number(paymentAmount) > due
+                            }
+                            onClick={collectPayment}
+                            className="flex-1 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 font-black shadow-lg shadow-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                          >
+                            {savingPayment
+                              ? "Saving Payment..."
+                              : "💰 Collect Fee"}
+                          </button>
 
-                          </div>
                         </div>
                       </>
                     )}
@@ -2678,6 +2251,98 @@ function FeeManagement() {
 
 }
 
+
+function FeeStructureEditor({
+  className,
+  initial,
+  saving,
+  onSave,
+}) {
+  const [values, setValues] = useState({
+    tuitionFee: Number(initial?.tuitionFee || 0),
+    examFee: Number(initial?.examFee || 0),
+    transportFee: Number(initial?.transportFee || 0),
+    otherFee: Number(initial?.otherFee || 0),
+  });
+
+  useEffect(() => {
+    setValues({
+      tuitionFee: Number(initial?.tuitionFee || 0),
+      examFee: Number(initial?.examFee || 0),
+      transportFee: Number(initial?.transportFee || 0),
+      otherFee: Number(initial?.otherFee || 0),
+    });
+  }, [
+    initial?.tuitionFee,
+    initial?.examFee,
+    initial?.transportFee,
+    initial?.otherFee,
+  ]);
+
+  const total =
+    Number(values.tuitionFee || 0) +
+    Number(values.examFee || 0) +
+    Number(values.transportFee || 0) +
+    Number(values.otherFee || 0);
+
+  const update = (key, value) => {
+    setValues((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-5 hover:shadow-md transition">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wider text-gray-400">
+            Annual Structure
+          </p>
+          <h3 className="text-xl font-black text-indigo-700">
+            Class {className}
+          </h3>
+        </div>
+
+        <div className="text-right">
+          <p className="text-xs text-gray-400">Total</p>
+          <p className="text-lg font-black text-emerald-700">
+            ₹{total.toLocaleString("en-IN")}
+          </p>
+        </div>
+      </div>
+
+      {[
+        ["tuitionFee", "Tuition Fee"],
+        ["examFee", "Exam Fee"],
+        ["transportFee", "Transport Fee"],
+        ["otherFee", "Other Fee"],
+      ].map(([key, label]) => (
+        <label key={key} className="block mb-3">
+          <span className="text-xs font-bold text-gray-600">
+            {label}
+          </span>
+          <input
+            type="number"
+            min="0"
+            value={values[key]}
+            onChange={(e) => update(key, e.target.value)}
+            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-100"
+          />
+        </label>
+      ))}
+
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => onSave(className, values)}
+        className="w-full mt-1 rounded-xl bg-indigo-600 text-white py-3 font-bold hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {saving ? "Saving..." : "💾 Save Class Fee"}
+      </button>
+    </div>
+  );
+}
 
 function MiniReport({ label, value, tone }) {
   const styles = {

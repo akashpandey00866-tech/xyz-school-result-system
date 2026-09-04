@@ -1,19 +1,11 @@
-import { useEffect, useRef } from "react";
-import {
-  Navigate,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
-import { signOut } from "firebase/auth";
-import { auth } from "../config/firebase";
+import React from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function ProtectedAdminRoute({
   children,
 }) {
   const location = useLocation();
-  const navigate = useNavigate();
-  const backTriggered = useRef(false);
 
   const {
     user,
@@ -23,109 +15,117 @@ export default function ProtectedAdminRoute({
     isAccountActive,
   } = useAuth();
 
-  useEffect(() => {
-    if (
-      loading ||
-      profileLoading ||
-      !user
-    ) {
-      return undefined;
-    }
-
-    /*
-      Create a history guard. When the user presses Browser Back
-      from the authenticated admin portal, destroy the session and
-      force a fresh /login instead of restoring a protected page.
-    */
-    const currentUrl =
-      window.location.href;
-
-    window.history.pushState(
-      {
-        xyzProtected: true,
-      },
-      "",
-      currentUrl
-    );
-
-    const handlePopState = async () => {
-      if (backTriggered.current) {
-        return;
-      }
-
-      backTriggered.current = true;
-
-      try {
-        await signOut(auth);
-      } catch (error) {
-        console.warn(
-          "Admin back-logout cleanup:",
-          error
-        );
-      } finally {
-        navigate(
-          "/login",
-          {
-            replace: true,
-            state: {
-              reason: "back",
-              from: location.pathname,
-            },
-          }
-        );
-      }
-    };
-
-    window.addEventListener(
-      "popstate",
-      handlePopState
-    );
-
-    return () => {
-      window.removeEventListener(
-        "popstate",
-        handlePopState
-      );
-    };
-  }, [
-    loading,
-    profileLoading,
-    user,
-    navigate,
-    location.pathname,
-  ]);
+  /* =========================================================
+     AUTH SESSION RESTORING
+     Firebase session restore hone tak redirect nahi karna.
+     Isse page refresh/navigation ke time login flash nahi hoga.
+  ========================================================= */
 
   if (
     loading ||
     profileLoading
   ) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+      <div
+        className="min-h-screen flex items-center justify-center p-6"
+        style={{
+          background:
+            "var(--school-bg, #f8fafc)",
+          color:
+            "var(--school-text, #0f172a)",
+        }}
+      >
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 rounded-full border-4 border-white/10 border-t-cyan-400 animate-spin" />
-          <p className="mt-5 text-lg font-black text-white">
+
+          <div
+            className="mx-auto h-12 w-12 rounded-full border-4 animate-spin"
+            style={{
+              borderColor:
+                "var(--school-primary-light, #d1fae5)",
+              borderTopColor:
+                "var(--school-primary, #059669)",
+            }}
+          />
+
+          <h2
+            className="mt-5 text-lg font-black"
+            style={{
+              color:
+                "var(--school-text, #0f172a)",
+            }}
+          >
             Securing Admin Portal
+          </h2>
+
+          <p
+            className="mt-2 text-sm"
+            style={{
+              color:
+                "var(--school-muted, #64748b)",
+            }}
+          >
+            Restoring your secure school session…
           </p>
-          <p className="mt-2 text-sm text-slate-400">
-            Verifying your school administrator account…
-          </p>
+
         </div>
       </div>
     );
   }
 
-  const adminLikeRoles = [
-    "admin",
-    "principal",
-    "accountant",
-    "staff",
-  ];
+  /* =========================================================
+     NO FIREBASE SESSION
+     
+     IMPORTANT:
+     Protected route sirf redirect karega.
+     signOut(), history manipulation ya popstate
+     yahan nahi hoga.
+  ========================================================= */
+
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          from:
+            location.pathname +
+            location.search +
+            location.hash,
+          reason:
+            "authentication-required",
+        }}
+      />
+    );
+  }
+
+  /* =========================================================
+     ROLE PROTECTION
+  ========================================================= */
 
   if (
-    !user ||
-    !adminLikeRoles.includes(
-      role
-    ) ||
+    role !== "admin"
+  ) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          from:
+            location.pathname +
+            location.search +
+            location.hash,
+          reason:
+            "unauthorized-role",
+        }}
+      />
+    );
+  }
+
+  /* =========================================================
+     ACCOUNT STATUS
+  ========================================================= */
+
+  if (
     isAccountActive === false
   ) {
     return (
@@ -134,11 +134,22 @@ export default function ProtectedAdminRoute({
         replace
         state={{
           from:
-            location.pathname,
+            location.pathname +
+            location.search +
+            location.hash,
+          reason:
+            "account-inactive",
         }}
       />
     );
   }
+
+  /* =========================================================
+     AUTHORIZED ADMIN
+     
+     Children remain mounted through the route system.
+     Internal navigation will NOT trigger logout.
+  ========================================================= */
 
   return children;
 }

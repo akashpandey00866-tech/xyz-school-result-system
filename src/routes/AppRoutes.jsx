@@ -5,52 +5,22 @@ import {
   Navigate,
 } from "react-router-dom";
 
-/* =========================================================
-   PUBLIC
-========================================================= */
-
 import SchoolHome from "../pages/SchoolHome";
 import Login from "../pages/Login";
 import NotFound from "../pages/NotFound";
 
-/* =========================================================
-   STUDENT
-========================================================= */
-
 import StudentDashboard from "../pages/StudentDashboard";
-
-/* =========================================================
-   ADMIN
-========================================================= */
-
 import AdminDashboard from "../pages/AdminDashboard";
 import TeacherManagement from "../pages/admin/TeacherManagement";
-
-/* =========================================================
-   TEACHER
-========================================================= */
-
 import TeacherDashboard from "../pages/TeacherDashboard";
-
-/* =========================================================
-   STUDENTS
-========================================================= */
 
 import AddStudent from "../pages/AddStudent";
 import ViewStudents from "../pages/ViewStudents";
 import EditStudent from "../pages/EditStudent";
 import StudentAccounts from "../pages/admin/StudentAccounts";
 
-/* =========================================================
-   ACADEMIC
-========================================================= */
-
 import AcademicConfiguration from "../pages/AcademicConfiguration";
 import SubjectManagement from "../pages/SubjectManagement";
-
-/* =========================================================
-   RESULTS
-========================================================= */
 
 import AddResult from "../pages/AddResult";
 import ViewResults from "../pages/ViewResults";
@@ -58,149 +28,60 @@ import EditResult from "../pages/EditResult";
 import ResultDetails from "../pages/ResultDetails";
 import PublishResults from "../pages/PublishResults";
 
-/* =========================================================
-   EXCEL
-========================================================= */
-
 import ExcelExport from "../pages/ExcelExport";
 import ExcelImport from "../pages/ExcelImport";
-
-/* =========================================================
-   FEES
-========================================================= */
 
 import FeeManagement from "../pages/FeeManagement";
 import CollectFee from "../pages/CollectFee";
 import PaymentHistory from "../pages/PaymentHistory";
 import FeeSettings from "../pages/FeeSettings";
 
-/* =========================================================
-   OTHER
-========================================================= */
-
 import Archive from "../pages/Archive";
 import Settings from "../pages/Settings";
 
-/* =========================================================
-   SECURITY
-========================================================= */
-
 import ProtectedAdminRoute from "./ProtectedAdminRoute";
 import ProtectedStudentRoute from "./ProtectedStudentRoute";
-
-/*
-  IMPORTANT:
-  Teacher currently has no dedicated ProtectedTeacherRoute
-  in the existing project structure supplied to us, so the
-  existing Teacher routes are preserved unchanged here.
-
-  Once a ProtectedTeacherRoute is present, these two routes
-  can be wrapped without changing the rest of the app.
-*/
-
-/* =========================================================
-   APP ROUTES
-========================================================= */
+import ProtectedTeacherRoute from "./ProtectedTeacherRoute";
 
 function AppRoutes() {
   return (
     <BrowserRouter>
-
       <Routes>
 
-        {/* =================================================
-            PUBLIC HOME
-            NEW SCHOOL FRONTEND
-        ================================================= */}
+        {/* PUBLIC */}
+        <Route path="/" element={<SchoolHome />} />
+        <Route path="/login" element={<Login />} />
 
-        <Route
-          path="/"
-          element={
-            <SchoolHome />
-          }
-        />
-
-        {/* =================================================
-            CENTRAL LOGIN
-            ONLY LOGIN PAGE
-        ================================================= */}
-
-        <Route
-          path="/login"
-          element={
-            <Login />
-          }
-        />
-
-        {/* =================================================
-            LEGACY LOGIN URLS
-            Redirect to the new central login.
-            Old panels are no longer rendered.
-        ================================================= */}
-
+        {/* LEGACY LOGIN URLS — compatibility only */}
         <Route
           path="/student-login"
-          element={
-            <Navigate
-              to="/login"
-              replace
-            />
-          }
+          element={<Navigate to="/login" replace />}
         />
-
         <Route
           path="/student/login"
-          element={
-            <Navigate
-              to="/login"
-              replace
-            />
-          }
+          element={<Navigate to="/login" replace />}
         />
-
         <Route
           path="/studentLogin"
-          element={
-            <Navigate
-              to="/login"
-              replace
-            />
-          }
+          element={<Navigate to="/login" replace />}
         />
-
         <Route
           path="/studentlogin"
-          element={
-            <Navigate
-              to="/login"
-              replace
-            />
-          }
+          element={<Navigate to="/login" replace />}
         />
-
         <Route
           path="/admin-login"
-          element={
-            <Navigate
-              to="/login"
-              replace
-            />
-          }
+          element={<Navigate to="/login" replace />}
         />
-
         <Route
           path="/admin/login"
-          element={
-            <Navigate
-              to="/login"
-              replace
-            />
-          }
+          element={<Navigate to="/login" replace />}
         />
 
-        {/* =================================================
-            STUDENT DASHBOARD
-        ================================================= */}
+        {/* =====================================================
+            STUDENT PORTAL
+            Internal navigation does NOT logout.
+        ===================================================== */}
 
         <Route
           path="/student-dashboard"
@@ -238,28 +119,31 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            TEACHER DASHBOARD
-            Existing routes preserved
-        ================================================= */}
+        {/* =====================================================
+            TEACHER PORTAL
+        ===================================================== */}
 
         <Route
           path="/teacher-dashboard"
           element={
-            <TeacherDashboard />
+            <ProtectedTeacherRoute>
+              <TeacherDashboard />
+            </ProtectedTeacherRoute>
           }
         />
 
         <Route
           path="/teacher/dashboard"
           element={
-            <TeacherDashboard />
+            <ProtectedTeacherRoute>
+              <TeacherDashboard />
+            </ProtectedTeacherRoute>
           }
         />
 
-        {/* =================================================
-            ADMIN DASHBOARD
-        ================================================= */}
+        {/* =====================================================
+            ADMIN PORTAL
+        ===================================================== */}
 
         <Route
           path="/admin-dashboard"
@@ -279,11 +163,7 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            TEACHER MANAGEMENT
-            ADMIN ONLY
-        ================================================= */}
-
+        {/* ADMIN — TEACHERS */}
         <Route
           path="/teacher-management"
           element={
@@ -302,11 +182,7 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            ACADEMIC
-            ADMIN ONLY
-        ================================================= */}
-
+        {/* ADMIN — ACADEMIC */}
         <Route
           path="/academic-configuration"
           element={
@@ -325,11 +201,7 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            STUDENTS
-            ADMIN ONLY
-        ================================================= */}
-
+        {/* ADMIN — STUDENTS */}
         <Route
           path="/students"
           element={
@@ -384,11 +256,7 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            RESULTS
-            ADMIN ONLY
-        ================================================= */}
-
+        {/* ADMIN — RESULTS */}
         <Route
           path="/add-result"
           element={
@@ -434,11 +302,7 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            EXCEL
-            ADMIN ONLY
-        ================================================= */}
-
+        {/* ADMIN — EXCEL */}
         <Route
           path="/excel-export"
           element={
@@ -457,11 +321,7 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            FEES
-            ADMIN ONLY
-        ================================================= */}
-
+        {/* ADMIN — FEES */}
         <Route
           path="/fees"
           element={
@@ -507,11 +367,7 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            OTHER
-            ADMIN ONLY
-        ================================================= */}
-
+        {/* ADMIN — OTHER */}
         <Route
           path="/archive"
           element={
@@ -530,19 +386,13 @@ function AppRoutes() {
           }
         />
 
-        {/* =================================================
-            404
-        ================================================= */}
-
+        {/* 404 */}
         <Route
           path="*"
-          element={
-            <NotFound />
-          }
+          element={<NotFound />}
         />
 
       </Routes>
-
     </BrowserRouter>
   );
 }
